@@ -1,0 +1,508 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+//
+// -------------------------
+// ENUMS (NEMIS-aligned)
+// -------------------------
+//
+
+// School Type (MOE official classification)
+enum SchoolType {
+  ONE_AB     // "1AB"
+  ONE_C      // "1C"
+  TYPE_2     // "2"
+  TYPE_3     // "3"
+  OTHER
+}
+
+// School teaching mediums
+enum SchoolMedium {
+  SINHALA
+  TAMIL
+  ENGLISH
+}
+
+// System user roles (RBAC)
+enum UserRole {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  PRINCIPAL
+  TEACHER
+  CLERK
+  PARENT
+}
+
+enum TeacherAppointmentType {
+  PERMANENT
+  TEMPORARY
+  VOLUNTEER
+  CONTRACT
+}
+
+enum TeacherEmploymentStatus {
+  ACTIVE
+  TRANSFERRED
+  RETIRED
+  RELEASED
+  DECEASED
+  RESIGNED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum Religion {
+  BUDDHIST
+  HINDU
+  ISLAM
+  CATHOLIC
+  CHRISTIAN
+  OTHER
+}
+
+enum Ethnicity {
+  SINHALA
+  SRI_LANKAN_TAMIL
+  INDIAN_TAMIL
+  MUSLIM
+  BURGHER
+  MALAY
+  OTHER
+}
+
+enum MotherTongue {
+  SINHALA
+  TAMIL
+  ENGLISH
+}
+
+enum AdmissionStatus {
+  NEW             // first time in school
+  PROMOTED        // standard promotion
+  REPEATED        // repeated grade
+  TRANSFERRED_IN  // new from another school
+  TRANSFERRED_OUT // left to another school
+}
+
+enum TeacherClassRole {
+  CLASS_TEACHER
+  SUBJECT_TEACHER
+  ASSISTANT_TEACHER
+}
+
+
+//
+// -------------------------
+// STUDENT PROFILE
+// -------------------------
+
+model StudentProfile {
+  id           String   @id @default(uuid())
+
+  /// Tenant (school) this student belongs to
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+
+  /// Identity fields
+  fullName     String
+  initials     String?
+  dateOfBirth  DateTime
+  gender       Gender
+  
+  /// NEMIS-required identifiers
+  indexNumber      String    // Student Index Number (SIS)
+  admissionNumber  String
+  admissionDate    DateTime
+
+  /// Demographic attributes
+  motherTongue MotherTongue
+  religion     Religion
+  ethnicity    Ethnicity
+
+  /// Status flags
+  isActive     Boolean   @default(true)
+
+  /// For optimistic concurrency control
+  rowVersion   Int       @default(1)
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  enrollments StudentGradeClass[]
+
+  // Constraints required by NEMIS
+  @@unique([tenantId, indexNumber])
+  @@unique([tenantId, admissionNumber])
+
+  // Useful indexes
+  @@index([tenantId])
+  @@index([gender])
+  @@index([isActive])
+}
+
+model StudentGradeClass {
+  id             String          @id @default(uuid())
+
+  /// Links
+  studentId      String
+  student        StudentProfile  @relation(fields: [studentId], references: [id])
+
+  gradeId        String
+  grade          Grade           @relation(fields: [gradeId], references: [id])
+
+  classId        String
+  classroom      Classroom       @relation(fields: [classId], references: [id])
+
+  academicYearId Int
+  academicYear   AcademicYear    @relation(fields: [academicYearId], references: [id])
+
+  /// NEMIS-required admission status
+  admissionStatus AdmissionStatus
+
+  /// Reasons for transfer / repeat / etc.
+  transferReason  String?
+
+  /// Index or roll number inside the class
+  classIndex      Int?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  /// A student should have only ONE enrollment per academic year per school
+  /// NEMIS requirement, avoids duplicates
+  @@unique([studentId, academicYearId])
+
+  /// Performance indexes
+  @@index([classId])
+  @@index([gradeId])
+  @@index([academicYearId])
+}
+
+
+model Grade {
+  id             String        @id @default(uuid())
+
+  /// Grade number: 1–13 (required by MOE)
+  gradeNumber    Int
+
+  /// Optional grade display name (e.g., “Grade 6 English Medium”)
+  name           String?
+
+  /// Multi-tenant ownership
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+
+  /// Optional link to academic year (NEMIS annual structures)
+  academicYearId Int?
+  academicYear   AcademicYear?  @relation(fields: [academicYearId], references: [id])
+
+  /// Classrooms under this grade
+  classrooms     Classroom[]
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  studentEnrollments StudentGradeClass[]
+  teacherAssignments TeacherGradeClass[]
+
+  /// Prevents duplicates per school
+  @@unique([tenantId, gradeNumber])
+
+  /// Useful for filtering
+  @@index([tenantId])
+}
+
+model Classroom {
+  id          String   @id @default(uuid())
+
+  /// Class belongs to a Grade
+  gradeId     String
+  grade       Grade    @relation(fields: [gradeId], references: [id])
+
+  /// Multi-tenant safety
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  /// Class name/section (A, B, C…)
+  className   String
+
+  /// e.g., “6B”, “10A”
+  classCode   String
+
+  /// Optional capacity (future use)
+  capacity    Int?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  studentEnrollments StudentGradeClass[]
+  teacherAssignments TeacherGradeClass[]
+
+  /// Prevents: school → grade 6 → class B repeated twice
+  @@unique([tenantId, gradeId, className])
+
+  /// Prevent duplicate classCode inside same tenant
+  @@unique([tenantId, classCode])
+
+  @@index([tenantId])
+  @@index([gradeId])
+}
+
+
+//
+// -------------------------
+// TEACHER PROFILE
+// -------------------------
+model TeacherProfile {
+  id         String   @id @default(uuid())
+
+  /// Tenant (School) this teacher belongs to
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+
+  /// Optional link to auth user account
+  userId     String?   @unique     
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  /// Full name (as per NIC / NEMIS entry)
+  fullName   String
+  initials   String?
+
+  /// National Identity Card number
+  nic        String     @unique
+
+  /// Teacher Identity Number (TIN) – nationally unique
+  tin        String     @unique
+
+  /// Teaching subjects (Phase-1 as string list)
+  subjectCodes String[]
+
+  /// Appointment type: Permanent, Temporary, Volunteer, Contract
+  appointmentType TeacherAppointmentType
+
+  /// Teacher’s service start date in this school
+  serviceStart DateTime
+
+  /// NEMIS employment status
+  employmentStatus TeacherEmploymentStatus @default(ACTIVE)
+  
+
+  /// Standard timestamps
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  classAssignments TeacherGradeClass[]
+
+  @@index([tenantId])
+  @@index([tin])
+  @@index([nic])
+}
+
+model TeacherGradeClass {
+  id              String          @id @default(uuid())
+
+  /// Links
+  teacherId       String
+  teacher         TeacherProfile  @relation(fields: [teacherId], references: [id])
+
+  gradeId         String
+  grade           Grade           @relation(fields: [gradeId], references: [id])
+
+  classId         String
+  classroom       Classroom       @relation(fields: [classId], references: [id])
+
+  academicYearId  Int
+  academicYear    AcademicYear    @relation(fields: [academicYearId], references: [id])
+
+  /// Class role: class teacher, subject teacher...
+  roleInClass     TeacherClassRole
+
+  /// Optional subject if needed in future phases
+  subjectCode     String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  /// Prevent duplicate teacher assignment for same class and year
+  @@unique([teacherId, classId, academicYearId])
+
+  @@index([gradeId])
+  @@index([classId])
+  @@index([academicYearId])
+}
+
+
+//
+// -------------------------
+// USER & AUTHENTICATION MODELS
+// -------------------------
+model User {
+  id       String   @id @default(uuid())
+
+  /// Nullable for SUPER_ADMIN (system-wide)
+  tenantId String?
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+
+  email        String
+  passwordHash String
+
+  role         UserRole
+  isActive     Boolean   @default(true)
+
+  /// Security / brute-force protection
+  failedLoginAttempts Int      @default(0)
+  lockUntil           DateTime?
+
+  lastLoginAt DateTime?
+
+  /// Optimistic concurrency control
+  rowVersion  Int       @default(1)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  /// Relations
+  refreshTokens  RefreshToken[]
+  teacherProfile TeacherProfile?   // one teacher profile per user (optional)
+  auditLogs AuditLog[]
+
+
+  /// Email is unique per tenant (SUPER_ADMIN unique because tenantId=null)
+  @@unique([tenantId, email])
+
+  /// Useful for queries and dashboards
+  @@index([tenantId, role])
+  @@index([isActive])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+
+  /// Which user this token belongs to
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Hashed refresh token (never store raw)
+  tokenHash String
+
+  /// Token lifecycle
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+//
+// -------------------------
+// TENANT (SCHOOL)
+// -------------------------
+model Tenant {
+  id           String          @id @default(uuid())
+  name         String
+
+  /// MOE school census number (unique national ID)
+  schoolCode   String          @unique
+
+  /// MOE school category (1AB, 1C, Type 2, Type 3)
+  schoolType   SchoolType
+
+  /// Location metadata for NEMIS
+  province     String?
+  district     String
+  zone         String
+  division     String
+
+  /// Mediums offered (Sinhala/Tamil/English)
+  mediums      SchoolMedium[]
+
+  /// Optional address fields
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+
+  /// Geo-coordinates for analytics or school maps
+  latitude     Float?
+  longitude    Float?
+
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  /// RELATIONS
+  users           User[]
+  teacherProfiles TeacherProfile[]   // all teachers in this school
+  studentProfiles StudentProfile[]
+  grades      Grade[]
+  classrooms  Classroom[]
+  auditLogs AuditLog[]
+
+  /// Recommended indexes for NEMIS-level reporting
+  @@index([district, zone])
+  @@index([schoolType])
+  @@index([isActive])
+}
+
+//
+// -------------------------
+// ACADEMIC YEAR
+// -------------------------
+model AcademicYear {
+  id          Int        @id @default(autoincrement())
+  label       String     // "2025", "2025/2026"
+  numericYear Int?
+  start       DateTime
+  end         DateTime
+  active      Boolean    @default(false)
+
+  /// Reverse relation for Grade.academicYear
+  grades      Grade[]
+  studentEnrollments StudentGradeClass[]
+  teacherAssignments TeacherGradeClass[]
+
+
+  @@unique([label])
+  @@index([active])
+}
+model AuditLog {
+  id            String     @id @default(uuid())
+
+  /// School-level multi-tenant isolation
+  tenantId      String?
+  tenant        Tenant?    @relation(fields: [tenantId], references: [id])
+
+  /// User who performed the action (nullable for system events)
+  userId        String?
+  user          User?      @relation(fields: [userId], references: [id])
+
+  /// Action identifier (e.g., LOGIN_SUCCESS, USER_CREATED)
+  actionCode    String
+
+  /// JSON payload storing relevant info (field changes, entity IDs, etc.)
+  detailsJson   String?
+
+  /// Client metadata
+  ipAddress     String?
+  userAgent     String?
+
+  /// Retention: logs can be purged after this date
+  retentionUntil DateTime?
+
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([actionCode])
+  @@index([createdAt])
+}
+
