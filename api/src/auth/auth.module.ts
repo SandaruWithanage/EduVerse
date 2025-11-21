@@ -9,14 +9,18 @@ import { AuthController } from './auth.controller';
 
 import { PrismaModule } from '../prisma.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
+
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 
 @Module({
   imports: [
     PrismaModule,
 
+    // Default JWT strategy
     PassportModule.register({ defaultStrategy: 'jwt' }),
 
+    // JWT config (secret loaded in strategy)
     JwtModule.register({
       global: true,
     }),
@@ -28,9 +32,17 @@ import { RolesGuard } from './guards/roles.guard';
     AuthService,
     JwtStrategy,
 
+    // 👇 ORDER IS CRITICAL
+    // 1. Global authentication (populates req.user)
     {
       provide: APP_GUARD,
-      useClass: RolesGuard, // 👈 This makes @Roles() ACTIVE
+      useClass: JwtAuthGuard,
+    },
+
+    // 2. Global authorization (checks req.user.role)
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 

@@ -4,39 +4,42 @@ import {
   Controller, 
   Post, 
   Get,      
-  UseGuards
 } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
+
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Roles } from './decorators/roles.decorator';
-import { RolesGuard } from './guards/roles.guard';
+import { Public } from './decorators/public.decorator';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // ---------- PUBLIC AUTH ROUTES ----------
+  @Public()
   @Post('login')
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
+  @Public()
   @Post('refresh')
   async refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  @Public()
   @Post('logout')
   async logout(@Body() dto: LogoutDto) {
     return this.authService.logout(dto.refreshToken);
   }
 
+  // ---------- AUTHENTICATED USER ----------
   @Get('me')
-  @UseGuards(JwtAuthGuard)
   getMe(@CurrentUser() user: any) {
     return {
       message: 'You are authenticated!',
@@ -44,9 +47,8 @@ export class AuthController {
     };
   }
 
-  // ------------------ ADMIN ONLY ------------------
+  // ---------- ADMIN ONLY ----------
   @Get('admin-area')
-  @UseGuards(JwtAuthGuard, RolesGuard) // ⬅ IMPORTANT FIX
   @Roles('SUPER_ADMIN')
   adminArea(@CurrentUser() user: any) {
     return {
@@ -55,3 +57,4 @@ export class AuthController {
     };
   }
 }
+
