@@ -167,4 +167,27 @@ export class AuthService {
       refreshToken: newRefreshToken,
     };
   }
+  // ---------------- LOGOUT ----------------
+  async logout(refreshToken: string) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token missing');
+    }
+
+    let decoded: any;
+    try {
+      decoded = await this.jwtService.verifyAsync(refreshToken, {
+        secret: process.env.JWT_REFRESH_SECRET,
+      });
+    } catch {
+      return { message: 'Logged out' }; // safe response
+    }
+
+    const userId = decoded.sub;
+
+    await this.prisma.refreshToken.deleteMany({
+      where: { userId },
+    });
+
+    return { message: 'Logged out' };
+  }
 }

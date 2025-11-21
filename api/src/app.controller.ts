@@ -1,12 +1,23 @@
-import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service';
+// src/app.controller.ts
+import { Controller, Get, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
+import { Roles } from './auth/decorators/roles.decorator';
 
-@Controller()
+@Controller('api')
 export class AppController {
-  constructor(private readonly appService: AppService) {}
-
-  @Get()
-  getHello() {
-    return this.appService.getHello();
+  
+  @UseGuards(JwtAuthGuard)
+  @Get('protected')
+  getProtected() {
+    return { message: 'You are authenticated!' };
   }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @Get('admin-area')
+  getAdminOnly() {
+    return { message: 'Welcome SUPER_ADMIN!' };
+  }
+
 }
