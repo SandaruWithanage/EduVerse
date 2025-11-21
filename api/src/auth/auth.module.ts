@@ -2,6 +2,7 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { APP_GUARD } from '@nestjs/core';
 
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
@@ -14,10 +15,8 @@ import { RolesGuard } from './guards/roles.guard';
   imports: [
     PrismaModule,
 
-    // Passport must be registered for jwt guard to work
     PassportModule.register({ defaultStrategy: 'jwt' }),
 
-    // JwtModule: make available everywhere, but DO NOT define secrets here
     JwtModule.register({
       global: true,
     }),
@@ -28,7 +27,11 @@ import { RolesGuard } from './guards/roles.guard';
   providers: [
     AuthService,
     JwtStrategy,
-    RolesGuard,  
+
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard, // 👈 This makes @Roles() ACTIVE
+    },
   ],
 
   exports: [AuthService],

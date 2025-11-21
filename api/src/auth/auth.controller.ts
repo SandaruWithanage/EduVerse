@@ -4,16 +4,17 @@ import {
   Controller, 
   Post, 
   Get,      
-  UseGuards, 
-  Req        
+  UseGuards
 } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';  
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { Roles } from './decorators/roles.decorator';
+import { RolesGuard } from './guards/roles.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -39,6 +40,17 @@ export class AuthController {
   getMe(@CurrentUser() user: any) {
     return {
       message: 'You are authenticated!',
+      user,
+    };
+  }
+
+  // ------------------ ADMIN ONLY ------------------
+  @Get('admin-area')
+  @UseGuards(JwtAuthGuard, RolesGuard) // ⬅ IMPORTANT FIX
+  @Roles('SUPER_ADMIN')
+  adminArea(@CurrentUser() user: any) {
+    return {
+      message: 'Welcome to the admin area!',
       user,
     };
   }
