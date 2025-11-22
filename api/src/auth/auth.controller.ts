@@ -3,7 +3,10 @@ import {
   Body, 
   Controller, 
   Post, 
-  Get,      
+  Get, 
+  Ip,
+  Headers,
+  UnauthorizedException,   // ✅ FIXED
 } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
@@ -19,11 +22,31 @@ import { Public } from './decorators/public.decorator';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  // ---------- PUBLIC AUTH ROUTES ----------
+  // ============================================================
+  // PUBLIC AUTH ROUTES
+  // ============================================================
+
   @Public()
   @Post('login')
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    // 1. Validate credentials manually (logs success/failure)
+    const user = await this.authService.validateUser(
+      dto.email,
+      dto.password,
+      ip,
+      userAgent,
+    );
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // 2. Issue tokens + audit success inside the service
+    return this.authService.loginValidatedUser(user, ip, userAgent);
   }
 
   @Public()
@@ -38,7 +61,9 @@ export class AuthController {
     return this.authService.logout(dto.refreshToken);
   }
 
-  // ---------- AUTHENTICATED USER ----------
+  // ============================================================
+  // AUTHENTICATED USER
+  // ============================================================
   @Get('me')
   getMe(@CurrentUser() user: any) {
     return {
@@ -47,7 +72,9 @@ export class AuthController {
     };
   }
 
-  // ---------- ADMIN ONLY ----------
+  // ============================================================
+  // ADMIN ONLY
+  // ============================================================
   @Get('admin-area')
   @Roles('SUPER_ADMIN')
   adminArea(@CurrentUser() user: any) {
@@ -57,4 +84,3 @@ export class AuthController {
     };
   }
 }
-

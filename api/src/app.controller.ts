@@ -20,4 +20,10 @@ export class AppController {
     return { message: 'Welcome SUPER_ADMIN!' };
   }
 
+  @Get()
+  getHello(): string {
+    return 'Hello World!';
+  }
 }
+
+

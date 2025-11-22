@@ -2,22 +2,70 @@
 import {
   Injectable,
   UnauthorizedException,
-  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+
 import { PrismaService } from '../prisma.service';
-import { LoginDto } from './dto/login.dto';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly audit: AuditService,
   ) {}
 
-  // Helper: payload builder
-  private buildPayload(user: { id: string; tenantId: string | null; role: string }) {
+  // ============================================================
+  // VALIDATE USER (Used by Controller before issuing tokens)
+  // ============================================================
+  async validateUser(
+    email: string,
+    password: string,
+    ip: string,
+    userAgent: string,
+  ) {
+    const user = await this.prisma.user.findFirst({ where: { email } });
+
+    // ❌ USER NOT FOUND
+    if (!user) {
+      await this.audit.log({
+        action: 'LOGIN_FAILED_USER_NOT_FOUND',
+        ip,
+        userAgent,
+        details: { email },
+      });
+      return null;
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+
+    // ❌ WRONG PASSWORD
+    if (!valid) {
+      await this.audit.log({
+        action: 'LOGIN_FAILED_BAD_PASSWORD',
+        tenantId: user.tenantId ?? undefined,
+        userId: user.id,
+        ip,
+        userAgent,
+        details: { email },
+      });
+      return null;
+    }
+
+    // ✅ VALID CREDENTIALS
+    return user;
+  }
+
+  // ============================================================
+  // PAYLOAD BUILDER (what goes inside JWT)
+  // ============================================================
+  private buildPayload(user: {
+    id: string;
+    tenantId: string | null;
+    role: string;
+  }) {
     return {
       sub: user.id,
       tenantId: user.tenantId,
@@ -25,36 +73,34 @@ export class AuthService {
     };
   }
 
-  // ---------------- LOGIN ----------------
-  async login(dto: LoginDto) {
-    const { email, password } = dto;
-
-    const user = await this.prisma.user.findFirst({
-      where: { email, isActive: true },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
-    const passwordOk = await bcrypt.compare(password, user.passwordHash);
-    if (!passwordOk) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
+  // ============================================================
+  // LOGIN (Called AFTER validateUser() in controller)
+  // ============================================================
+  async loginValidatedUser(
+    user: {
+      id: string;
+      email: string;
+      tenantId: string | null;
+      role: string;
+    },
+    ip: string,
+    userAgent: string,
+  ) {
     const payload = this.buildPayload(user);
 
+    // Access token
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: process.env.JWT_ACCESS_SECRET,
       expiresIn: '15m',
     });
 
+    // Refresh token
     const refreshToken = await this.jwtService.signAsync(payload, {
       secret: process.env.JWT_REFRESH_SECRET,
       expiresIn: '7d',
     });
 
-    // Hash refresh token
+    // Store hashed refresh token (rotation-ready)
     const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
     const tokenHash = await bcrypt.hash(refreshToken, saltRounds);
 
@@ -69,6 +115,16 @@ export class AuthService {
       },
     });
 
+    // 📝 AUDIT LOG — LOGIN SUCCESS
+    await this.audit.log({
+      action: 'LOGIN_SUCCESS',
+      tenantId: user.tenantId ?? undefined,
+      userId: user.id,
+      ip,
+      userAgent,
+      details: { email: user.email, role: user.role },
+    });
+
     return {
       accessToken,
       refreshToken,
@@ -81,25 +137,28 @@ export class AuthService {
     };
   }
 
-  // ---------------- REFRESH TOKEN ----------------
+  // ============================================================
+  // REFRESH TOKEN
+  // ============================================================
   async refresh(refreshToken: string) {
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token missing');
     }
 
-    // Verify JWT refresh token
+    // 1) Verify JWT structure & signature
     let decoded: any;
     try {
       decoded = await this.jwtService.verifyAsync(refreshToken, {
         secret: process.env.JWT_REFRESH_SECRET,
       });
-    } catch (err) {
+    } catch {
+      // optional: you could audit here as REFRESH_TOKEN_INVALID_SIGNATURE
       throw new UnauthorizedException('Invalid refresh token');
     }
 
     const userId: string = decoded.sub;
 
-    // Get all stored refresh tokens for this user
+    // 2) Find stored refresh tokens for this user
     const tokens = await this.prisma.refreshToken.findMany({
       where: { userId },
     });
@@ -108,7 +167,7 @@ export class AuthService {
       throw new UnauthorizedException('Token not found or already used');
     }
 
-    // Compare hashed values
+    // 3) Match against hashed values
     let validRecord: { id: string; tokenHash: string } | null = null;
 
     for (const record of tokens) {
@@ -120,34 +179,34 @@ export class AuthService {
     }
 
     if (!validRecord) {
+      // optional: audit REFRESH_TOKEN_REJECTED
       throw new UnauthorizedException('Refresh token invalid');
     }
 
-    // Delete used refresh token (rotation)
+    // 4) Delete used token (rotation)
     await this.prisma.refreshToken.delete({
       where: { id: validRecord.id },
     });
 
-    // Build payload
     const payload = {
       sub: decoded.sub,
       tenantId: decoded.tenantId,
       role: decoded.role,
     };
 
-    // New access token
+    // 5) Issue new access token
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: process.env.JWT_ACCESS_SECRET,
       expiresIn: '15m',
     });
 
-    // New refresh token
+    // 6) Issue new refresh token
     const newRefreshToken = await this.jwtService.signAsync(payload, {
       secret: process.env.JWT_REFRESH_SECRET,
       expiresIn: '7d',
     });
 
-    // Hash and save new refresh token
+    // 7) Store new hashed refresh token
     const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
     const tokenHash = await bcrypt.hash(newRefreshToken, saltRounds);
 
@@ -162,12 +221,23 @@ export class AuthService {
       },
     });
 
+    // 📝 AUDIT LOG — REFRESH TOKEN USED
+    await this.audit.log({
+      action: 'REFRESH_TOKEN_USED',
+      tenantId: decoded.tenantId ?? undefined,
+      userId,
+      details: { rotatedFromId: validRecord.id },
+    });
+
     return {
       accessToken,
       refreshToken: newRefreshToken,
     };
   }
-  // ---------------- LOGOUT ----------------
+
+  // ============================================================
+  // LOGOUT
+  // ============================================================
   async logout(refreshToken: string) {
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token missing');
@@ -179,13 +249,21 @@ export class AuthService {
         secret: process.env.JWT_REFRESH_SECRET,
       });
     } catch {
-      return { message: 'Logged out' }; // safe response
+      // Even if token is invalid/expired, treat as logged out
+      return { message: 'Logged out' };
     }
 
     const userId = decoded.sub;
 
     await this.prisma.refreshToken.deleteMany({
       where: { userId },
+    });
+
+    // 📝 AUDIT LOG — LOGOUT
+    await this.audit.log({
+      action: 'LOGOUT',
+      tenantId: decoded.tenantId ?? undefined,
+      userId,
     });
 
     return { message: 'Logged out' };

@@ -8,6 +8,9 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma.module';
 import { AuthModule } from './auth/auth.module';
 
+import { AuditModule } from './audit/audit.module';
+
+
 @Module({
   imports: [
     // Load ENV first
@@ -19,6 +22,9 @@ import { AuthModule } from './auth/auth.module';
     // Database + Auth
     PrismaModule,
     AuthModule,
+
+    AuditModule,
+
   ],
   
   controllers: [AppController],

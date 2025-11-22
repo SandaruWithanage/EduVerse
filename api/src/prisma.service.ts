@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     super({
-      log: ['info', 'warn', 'error'],
+      log: ['warn', 'error'], // Keeps your console clean
     });
   }
 
@@ -17,18 +17,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     await this.$disconnect();
   }
 
-  // Helper to get an RLS-enabled client instance
-  getExtendedClient(tenantId: string, role: string) {
+  // 🌟 NEW FUNCTION: Creates a specific client for one request
+  createRlsClient(tenantId: string, role: string) {
     return this.$extends({
       query: {
         $allModels: {
           async $allOperations({ args, query }) {
-            // Wrap every query in a transaction to set local variables
+            // This wraps EVERY query in a transaction to set the session variables safely
             const [, result] = await this.$transaction([
               this.$executeRawUnsafe(
                 `SELECT set_config('app.tenant_id', $1, true), set_config('app.role', $2, true)`,
                 tenantId,
-                role
+                role,
               ),
               query(args),
             ]);
