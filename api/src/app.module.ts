@@ -9,6 +9,7 @@ import { PrismaModule } from './prisma.module';
 import { AuthModule } from './auth/auth.module';
 
 import { AuditModule } from './audit/audit.module';
+import { TenantModule } from './tenant/tenant.module';
 
 
 @Module({
@@ -22,8 +23,8 @@ import { AuditModule } from './audit/audit.module';
     // Database + Auth
     PrismaModule,
     AuthModule,
-
     AuditModule,
+    TenantModule
 
   ],
   

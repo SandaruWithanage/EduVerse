@@ -8,8 +8,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
-
-    console.log("DEBUG JWT_ACCESS_SECRET =", process.env.JWT_ACCESS_SECRET);
+    
 
     super({
       // Where to read the token from:

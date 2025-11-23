@@ -1,4 +1,3 @@
-// src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
@@ -7,26 +6,46 @@ import helmet from 'helmet';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. Security Middleware
-  app.use(helmet()); // HTTP security headers
+  // ----------------------------------------------------------
+  // 1. CRITICAL: Enable Shutdown Hooks
+  // ----------------------------------------------------------
+  // Required for Prisma to disconnect gracefully when you stop 
+  // the server (Ctrl+C). Prevents "too many clients" DB errors.
+  app.enableShutdownHooks();
+
+  // ----------------------------------------------------------
+  // 2. Security & CORS
+  // ----------------------------------------------------------
+  app.use(helmet()); // Set security headers
+  
   app.enableCors({
-    origin: '*',  // For development — change in production!
+    // Allow env variable to override, otherwise default to open for dev
+    origin: process.env.CORS_ORIGIN || '*', 
     credentials: true,
   });
 
-  // 2. Global Validation (DTO validation)
+  // ----------------------------------------------------------
+  // 3. Global Validation Pipe
+  // ----------------------------------------------------------
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,            // remove unknown fields
-      forbidNonWhitelisted: true, // block unknown fields
-      transform: true,            // auto-convert types
+      whitelist: true,            // 🛡️ Strip properties not in DTO
+      forbidNonWhitelisted: true, // 🛡️ Throw error if extra properties sent
+      transform: true,            // ✨ REQUIRED: Enables @Transform() in your DTOs
+      
+      // ✨ NEW: Quality of Life improvement
+      // Automatically converts types (e.g. query param "limit=10" (string) -> 10 (number))
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
     }),
   );
 
-  // 3. Global API prefix
+  // ----------------------------------------------------------
+  // 4. Configuration
+  // ----------------------------------------------------------
   app.setGlobalPrefix('api');
 
-  // Start server
   const port = process.env.PORT || 4000;
   await app.listen(port);
 
