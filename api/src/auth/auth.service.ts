@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { ConfigService } from '@nestjs/config'; // 1. Import
 
 import { PrismaService } from '../prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -15,6 +16,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly audit: AuditService,
+    private readonly config: ConfigService, // 2. Inject
   ) {}
 
   // ... inside AuthService class
@@ -81,14 +83,14 @@ export class AuthService {
 
     // Access token
     const accessToken = await this.jwtService.signAsync(payload, {
-      secret: process.env.JWT_ACCESS_SECRET,
-      expiresIn: '15m',
+      secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
+      expiresIn: this.config.get('JWT_ACCESS_EXPIRY', '15m'),
     });
 
     // Refresh token
     const refreshToken = await this.jwtService.signAsync(payload, {
-      secret: process.env.JWT_REFRESH_SECRET,
-      expiresIn: '7d',
+      secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
+      expiresIn: this.config.get('JWT_REFRESH_EXPIRY', '7d'),
     });
 
     // Store hashed refresh token (rotation-ready)
@@ -136,11 +138,9 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token missing');
     }
 
-    // 1) Verify JWT structure & signature
-    let decoded: any;
     try {
       decoded = await this.jwtService.verifyAsync(refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET,
+        secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
       });
     } catch {
       // optional: you could audit here as REFRESH_TOKEN_INVALID_SIGNATURE
@@ -187,14 +187,14 @@ export class AuthService {
 
     // 5) Issue new access token
     const accessToken = await this.jwtService.signAsync(payload, {
-      secret: process.env.JWT_ACCESS_SECRET,
-      expiresIn: '15m',
+      secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
+      expiresIn: this.config.get('JWT_ACCESS_EXPIRY', '15m'),
     });
 
     // 6) Issue new refresh token
     const newRefreshToken = await this.jwtService.signAsync(payload, {
-      secret: process.env.JWT_REFRESH_SECRET,
-      expiresIn: '7d',
+      secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
+      expiresIn: this.config.get('JWT_REFRESH_EXPIRY', '7d'),
     });
 
     // 7) Store new hashed refresh token
@@ -237,7 +237,7 @@ export class AuthService {
     let decoded: any;
     try {
       decoded = await this.jwtService.verifyAsync(refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET,
+        secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
       });
     } catch {
       // Even if token is invalid/expired, treat as logged out
