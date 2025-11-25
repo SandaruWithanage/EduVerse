@@ -138,6 +138,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token missing');
     }
 
+    let decoded: any;
     try {
       decoded = await this.jwtService.verifyAsync(refreshToken, {
         secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
