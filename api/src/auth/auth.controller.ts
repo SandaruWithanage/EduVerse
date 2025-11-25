@@ -83,4 +83,19 @@ export class AuthController {
       user,
     };
   }
+
+  // ============================================================
+  // SCHOOL ADMIN ONLY
+  // ============================================================
+  @Get('school-admin-area')
+  @Roles('SCHOOL_ADMIN') 
+  // If you want super admin to also access:
+  @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
+  schoolAdminArea(@CurrentUser() user: any) {
+    return {
+      message: 'Welcome SCHOOL_ADMIN to School Admin Area!',
+      user,
+    };
+  }
+
 }

@@ -31,7 +31,7 @@ export class AuthService {
     // ❌ USER NOT FOUND
     if (!user) {
       await this.audit.log({
-        action: 'LOGIN_FAILED_USER_NOT_FOUND',
+        action: 'LOGIN_FAILED',
         ip,
         userAgent,
         details: { email },
@@ -44,7 +44,7 @@ export class AuthService {
     // ❌ WRONG PASSWORD
     if (!valid) {
       await this.audit.log({
-        action: 'LOGIN_FAILED_BAD_PASSWORD',
+        action: 'LOGIN_FAILED',
         tenantId: user.tenantId ?? undefined,
         userId: user.id,
         ip,

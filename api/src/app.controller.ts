@@ -3,8 +3,9 @@ import { Controller, Get, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { Roles } from './auth/decorators/roles.decorator';
+import { Public } from './auth/decorators/public.decorator';
 
-@Controller('api')
+@Controller()
 export class AppController {
   
   @UseGuards(JwtAuthGuard)
@@ -20,6 +21,7 @@ export class AppController {
     return { message: 'Welcome SUPER_ADMIN!' };
   }
 
+  @Public()
   @Get()
   getHello(): string {
     return 'Hello World!';
