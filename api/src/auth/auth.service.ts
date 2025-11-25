@@ -17,9 +17,7 @@ export class AuthService {
     private readonly audit: AuditService,
   ) {}
 
-  // ============================================================
-  // VALIDATE USER (Used by Controller before issuing tokens)
-  // ============================================================
+  // ... inside AuthService class
   async validateUser(
     email: string,
     password: string,
@@ -28,33 +26,26 @@ export class AuthService {
   ) {
     const user = await this.prisma.user.findFirst({ where: { email } });
 
-    // ❌ USER NOT FOUND
-    if (!user) {
+    // Don't return immediately, just flag it
+    let isValid = !!user;
+    
+    if (user) {
+      isValid = await bcrypt.compare(password, user.passwordHash);
+    }
+
+    if (!isValid) {
+      // 🔒 SECURITY: Generic log message to prevent user enumeration
       await this.audit.log({
-        action: 'LOGIN_FAILED',
+        action: 'LOGIN_FAILED', // Unified error code
+        // We specifically DO NOT log userId here if user wasn't found to avoid confusion
+        tenantId: user?.tenantId ?? undefined, 
         ip,
         userAgent,
-        details: { email },
+        details: { email }, // Log email so you know who is being targeted
       });
       return null;
     }
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
-
-    // ❌ WRONG PASSWORD
-    if (!valid) {
-      await this.audit.log({
-        action: 'LOGIN_FAILED',
-        tenantId: user.tenantId ?? undefined,
-        userId: user.id,
-        ip,
-        userAgent,
-        details: { email },
-      });
-      return null;
-    }
-
-    // ✅ VALID CREDENTIALS
     return user;
   }
 
