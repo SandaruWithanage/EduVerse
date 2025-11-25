@@ -1,7 +1,8 @@
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ConsoleLogger, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -9,7 +10,7 @@ async function bootstrap() {
   // ----------------------------------------------------------
   // 1. CRITICAL: Enable Shutdown Hooks
   // ----------------------------------------------------------
-  // Required for Prisma to disconnect gracefully when you stop 
+  // Required for Prisma to disconnect gracefully when you stop
   // the server (Ctrl+C). Prevents "too many clients" DB errors.
   app.enableShutdownHooks();
 
@@ -17,10 +18,10 @@ async function bootstrap() {
   // 2. Security & CORS
   // ----------------------------------------------------------
   app.use(helmet()); // Set security headers
-  
+
   app.enableCors({
     // Allow env variable to override, otherwise default to open for dev
-    origin: process.env.CORS_ORIGIN || '*', 
+    origin: process.env.CORS_ORIGIN || '*',
     credentials: true,
   });
 
@@ -29,10 +30,10 @@ async function bootstrap() {
   // ----------------------------------------------------------
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,            // 🛡️ Strip properties not in DTO
+      whitelist: true, // 🛡️ Strip properties not in DTO
       forbidNonWhitelisted: true, // 🛡️ Throw error if extra properties sent
-      transform: true,            // ✨ REQUIRED: Enables @Transform() in your DTOs
-      
+      transform: true, // ✨ REQUIRED: Enables @Transform() in your DTOs
+
       // ✨ NEW: Quality of Life improvement
       // Automatically converts types (e.g. query param "limit=10" (string) -> 10 (number))
       transformOptions: {
@@ -42,7 +43,14 @@ async function bootstrap() {
   );
 
   // ----------------------------------------------------------
-  // 4. Configuration
+  // 4. Global Exception Filter
+  // ----------------------------------------------------------
+  app.useGlobalFilters(
+    new AllExceptionsFilter(app.get(HttpAdapterHost), new ConsoleLogger()),
+  );
+
+  // ----------------------------------------------------------
+  // 5. Configuration
   // ----------------------------------------------------------
   app.setGlobalPrefix('api');
 
