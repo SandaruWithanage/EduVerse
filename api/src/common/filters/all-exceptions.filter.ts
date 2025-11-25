@@ -1,4 +1,3 @@
-// src/common/filters/all-exceptions.filter.ts
 import {
   ExceptionFilter,
   Catch,
@@ -25,15 +24,30 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    // Determine the message safely
+    let message = 'Internal server error';
+    if (exception instanceof HttpException) {
+      const response = exception.getResponse();
+      // Handle cases where response is an object with a message or just a string
+      message =
+        typeof response === 'object' && response !== null && 'message' in response
+          ? (response as any).message
+          : exception.message;
+    } else if (exception instanceof Error) {
+      // For non-HTTP errors (like DB errors), log the real reason but hide it from user in prod
+      message = exception.message; 
+    }
+
     const responseBody = {
       statusCode: httpStatus,
       timestamp: new Date().toISOString(),
       path: httpAdapter.getRequestUrl(ctx.getRequest()),
-      message: (exception as any).message,
+      message: Array.isArray(message) ? message[0] : message, // Clean up array messages from validators
     };
 
+    // Log the actual error stack for the developer
     this.logger.error(
-      `[${AllExceptionsFilter.name}] - ${JSON.stringify(responseBody)}`,
+      `[${AllExceptionsFilter.name}] ${httpStatus} Error: ${JSON.stringify(responseBody)}`,
       exception instanceof Error ? exception.stack : undefined,
     );
 
