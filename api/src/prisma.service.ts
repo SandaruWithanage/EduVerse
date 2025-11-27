@@ -22,13 +22,16 @@ export class PrismaService
 
   // 🌟 NEW FUNCTION: Creates a specific client for one request
   createRlsClient(tenantId: string, role: string) {
+    // 1. Capture the current instance context
+    const client = this;
+
     return this.$extends({
       query: {
         $allModels: {
           async $allOperations({ args, query }) {
-            // This wraps EVERY query in a transaction to set the session variables safely
-            const [, result] = await this.$transaction([
-              this.$executeRawUnsafe(
+            // 2. Use the captured 'client' variable instead of 'this'
+            const [, result] = await client.$transaction([
+              client.$executeRawUnsafe(
                 `SELECT set_config('app.tenant_id', $1, true), set_config('app.role', $2, true)`,
                 tenantId,
                 role,
