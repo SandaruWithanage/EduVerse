@@ -7,7 +7,6 @@ import { Public } from './auth/decorators/public.decorator';
 
 @Controller()
 export class AppController {
-  
   @UseGuards(JwtAuthGuard)
   @Get('protected')
   getProtected() {
@@ -27,5 +26,3 @@ export class AppController {
     return 'Hello World!';
   }
 }
-
-

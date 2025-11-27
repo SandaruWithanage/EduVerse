@@ -30,12 +30,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const response = exception.getResponse();
       // Handle cases where response is an object with a message or just a string
       message =
-        typeof response === 'object' && response !== null && 'message' in response
+        typeof response === 'object' &&
+        response !== null &&
+        'message' in response
           ? (response as any).message
           : exception.message;
     } else if (exception instanceof Error) {
       // For non-HTTP errors (like DB errors), log the real reason but hide it from user in prod
-      message = exception.message; 
+      message = exception.message;
     }
 
     const responseBody = {

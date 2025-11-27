@@ -80,7 +80,13 @@ export class TenantService {
   // ============================================================
   // UPDATE TENANT
   // ============================================================
-  async update(id: string, dto: UpdateTenantDto, user: any, ip: string, agent: string) {
+  async update(
+    id: string,
+    dto: UpdateTenantDto,
+    user: any,
+    ip: string,
+    agent: string,
+  ) {
     const tenant = await this.prisma.tenant.update({
       where: { id },
       data: {

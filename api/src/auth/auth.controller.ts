@@ -1,12 +1,12 @@
 // src/auth/auth.controller.ts
-import { 
-  Body, 
-  Controller, 
-  Post, 
-  Get, 
+import {
+  Body,
+  Controller,
+  Post,
+  Get,
   Ip,
   Headers,
-  UnauthorizedException,   // ✅ FIXED
+  UnauthorizedException, // ✅ FIXED
 } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
@@ -88,7 +88,7 @@ export class AuthController {
   // SCHOOL ADMIN ONLY
   // ============================================================
   @Get('school-admin-area')
-  @Roles('SCHOOL_ADMIN') 
+  @Roles('SCHOOL_ADMIN')
   // If you want super admin to also access:
   @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
   schoolAdminArea(@CurrentUser() user: any) {
@@ -97,5 +97,4 @@ export class AuthController {
       user,
     };
   }
-
 }

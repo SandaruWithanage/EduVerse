@@ -25,7 +25,7 @@ export class AuditService {
           userAgent: data.userAgent || 'UNKNOWN',
           detailsJson: data.details ? JSON.stringify(data.details) : null,
           retentionUntil: new Date(
-            new Date().setFullYear(new Date().getFullYear() + 1)
+            new Date().setFullYear(new Date().getFullYear() + 1),
           ),
         },
       });

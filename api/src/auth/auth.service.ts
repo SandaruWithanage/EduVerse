@@ -1,8 +1,5 @@
 // src/auth/auth.service.ts
-import {
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config'; // 1. Import
@@ -30,7 +27,7 @@ export class AuthService {
 
     // Don't return immediately, just flag it
     let isValid = !!user;
-    
+
     if (user) {
       isValid = await bcrypt.compare(password, user.passwordHash);
     }
@@ -40,7 +37,7 @@ export class AuthService {
       await this.audit.log({
         action: 'LOGIN_FAILED', // Unified error code
         // We specifically DO NOT log userId here if user wasn't found to avoid confusion
-        tenantId: user?.tenantId ?? undefined, 
+        tenantId: user?.tenantId ?? undefined,
         ip,
         userAgent,
         details: { email }, // Log email so you know who is being targeted

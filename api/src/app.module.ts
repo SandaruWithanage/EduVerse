@@ -14,7 +14,6 @@ import { UsersModule } from './users/users.module';
 import { StudentsModule } from './students/students.module';
 import { TeachersModule } from './teachers/teachers.module';
 
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -22,17 +21,19 @@ import { TeachersModule } from './teachers/teachers.module';
       envFilePath: ['.env.development', '.env'],
     }),
     // 1. SECURITY: Enable Rate Limiting (10 requests per 60 seconds)
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 10,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 10,
+      },
+    ]),
     PrismaModule,
     AuthModule,
     AuditModule,
     TenantModule,
     UsersModule,
     StudentsModule,
-    TeachersModule
+    TeachersModule,
   ],
   controllers: [AppController],
   providers: [
@@ -43,9 +44,9 @@ import { TeachersModule } from './teachers/teachers.module';
       useClass: ThrottlerGuard,
     },
     // 3. SECURITY: Enable RLS (Multi-tenancy)
-    { 
-      provide: APP_INTERCEPTOR, 
-      useClass: RlsInterceptor 
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RlsInterceptor,
     },
   ],
 })

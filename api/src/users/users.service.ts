@@ -42,15 +42,22 @@ export class UsersService {
     const forbiddenRoles = [UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN];
     // Logic: If target is an Admin/Super, deny access
     if (forbiddenRoles.includes(targetUser.role)) {
-       // Exception: Users can usually edit themselves, but here we are talking about management actions
-       if (currentUser.id !== targetUser.id) {
-         throw new BadRequestException('You cannot manage other admins or super admins');
-       }
+      // Exception: Users can usually edit themselves, but here we are talking about management actions
+      if (currentUser.id !== targetUser.id) {
+        throw new BadRequestException(
+          'You cannot manage other admins or super admins',
+        );
+      }
     }
   }
 
   // ---------- CREATE USER ----------
-  async create(dto: CreateUserDto, currentUser: any, ip: string, agent: string) {
+  async create(
+    dto: CreateUserDto,
+    currentUser: any,
+    ip: string,
+    agent: string,
+  ) {
     // School admin cannot create SUPER_ADMIN or SCHOOL_ADMIN (only teacher/parent/clerk)
     const allowedBySchoolAdmin: string[] = [
       UserRole.TEACHER,
@@ -64,8 +71,8 @@ export class UsersService {
     if (currentUser.role === UserRole.SUPER_ADMIN) {
       // Super admin can create any role, but must provide tenantId (unless creating another Super Admin)
       if (dto.role !== UserRole.SUPER_ADMIN && !dto.tenantId) {
-         // Optional: Enforce tenantId for non-super users
-         // throw new BadRequestException('tenantId is required');
+        // Optional: Enforce tenantId for non-super users
+        // throw new BadRequestException('tenantId is required');
       }
       tenantId = dto.tenantId ?? null; // Allow null for Super Admin users
     } else if (currentUser.role === UserRole.SCHOOL_ADMIN) {
@@ -168,7 +175,9 @@ export class UsersService {
     // Only restrict access for non-super
     if (currentUser.role !== UserRole.SUPER_ADMIN) {
       if (!currentUser.tenantId || user.tenantId !== currentUser.tenantId) {
-        throw new BadRequestException('You cannot view this user (Different Tenant)');
+        throw new BadRequestException(
+          'You cannot view this user (Different Tenant)',
+        );
       }
     }
 

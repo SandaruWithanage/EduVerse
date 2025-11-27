@@ -119,7 +119,7 @@ describe('UsersController (e2e)', () => {
     await app.close();
     await prisma.$disconnect();
   });
-  
+
   it('should create a new user (POST /users)', async () => {
     const createUserDto = {
       email: 'newuser@example.com',
@@ -220,7 +220,7 @@ describe('UsersController (e2e)', () => {
     await prisma.user.delete({ where: { id: tempUser.id } });
   });
 
-  it('should reset a user\'s password by ID (PATCH /users/:id/reset-password)', async () => {
+  it("should reset a user's password by ID (PATCH /users/:id/reset-password)", async () => {
     // Create a temporary user to reset password
     const tempUser = await prisma.user.create({
       data: {
@@ -254,4 +254,3 @@ describe('UsersController (e2e)', () => {
     await prisma.user.delete({ where: { id: tempUser.id } });
   });
 });
-

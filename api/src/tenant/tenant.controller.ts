@@ -50,12 +50,14 @@ export class TenantController {
   update(
     @Param('id') id: string,
     // 🛡️ SECURE VERSION: We keep whitelist: true to prevent hacking
-    @Body(new ValidationPipe({ 
-      transform: true, 
-      whitelist: true,                // <--- KEEPS SECURITY ON
-      forbidNonWhitelisted: true,     // <--- Enforces schema
-      skipMissingProperties: false    // PartialType adds @IsOptional, so this can be false
-    })) 
+    @Body(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true, // <--- KEEPS SECURITY ON
+        forbidNonWhitelisted: true, // <--- Enforces schema
+        skipMissingProperties: false, // PartialType adds @IsOptional, so this can be false
+      }),
+    )
     dto: UpdateTenantDto,
     @CurrentUser() user: any,
     @Ip() ip: string,
