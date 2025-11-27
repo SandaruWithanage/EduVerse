@@ -294,6 +294,13 @@ model TeacherProfile {
 
   /// NEMIS employment status
   employmentStatus TeacherEmploymentStatus @default(ACTIVE)
+
+  // DEMOGRAPHIC INFO
+  dateOfBirth  DateTime
+  gender       Gender
+  motherTongue MotherTongue
+  religion     Religion
+  ethnicity    Ethnicity
   
 
   /// Standard timestamps

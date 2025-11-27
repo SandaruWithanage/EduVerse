@@ -52,6 +52,88 @@ async function main() {
   console.log("✅ Tenant created:", tenant.name);
 
   // -------------------------------------------
+  //  Create Teachers
+  // -------------------------------------------
+
+  console.log('👨‍🏫 Seeding Teachers...');
+
+  const teachersData = [
+    { fullName: 'I S Vithanage', subject: 'Science', gender: 'MALE' },
+    { fullName: 'Sandaru Vithanage', subject: 'Maths', gender: 'MALE' },
+    { fullName: 'Induwara Vithanage', subject: 'ICT', gender: 'MALE' },
+    { fullName: 'Induwara Sandaru', subject: 'History', gender: 'MALE' },
+  ];
+
+  for (let i = 0; i < teachersData.length; i++) {
+    const teacher = teachersData[i];
+    // Generate unique dummy IDs based on index
+    const dummyNIC = `2003${500 + i}00${i}V`; 
+    const dummyTIN = `TIN-${1000 + i}`;
+
+    await prisma.teacherProfile.create({
+      data: {
+        fullName: teacher.fullName,
+        // Link to the tenant created earlier
+        tenantId: tenant.id, 
+        
+        // Required Unique Fields
+        nic: dummyNIC,
+        tin: dummyTIN,
+        
+        // Subjects (stored as Array of Strings)
+        subjectCodes: [teacher.subject], 
+        
+        // Enums & Dates (Defaulting for Seed)
+        appointmentType: 'PERMANENT', 
+        employmentStatus: 'ACTIVE',
+        serviceStart: new Date(),
+        dateOfBirth: new Date('2003-08-06'),
+        gender: teacher.gender,
+        religion: 'BUDDHIST',
+        ethnicity: 'SINHALA',
+        motherTongue: 'SINHALA',
+      },
+    });
+  }
+
+  console.log(`✅ Added ${teachersData.length} teachers successfully.`);
+
+  console.log('🎓 Seeding Students...');
+
+  const studentsData = [
+    { fullName: 'Kavindu Perera', gender: 'MALE', index: 'IDX-001', adm: 'ADM-001' },
+    { fullName: 'Amaya Silva', gender: 'FEMALE', index: 'IDX-002', adm: 'ADM-002' },
+    { fullName: 'Nimali Fernando', gender: 'FEMALE', index: 'IDX-003', adm: 'ADM-003' },
+    { fullName: 'Ruwan Jayasinghe', gender: 'MALE', index: 'IDX-004', adm: 'ADM-004' },
+  ];
+
+  for (const s of studentsData) {
+    await prisma.studentProfile.create({
+      data: {
+        tenantId: tenant.id,
+        fullName: s.fullName,
+        initials: s.fullName.split(' ').map(n => n[0]).join('. '),
+        dateOfBirth: new Date('2010-05-15'),
+        gender: s.gender,
+        
+        // NEMIS Requirements
+        indexNumber: s.index,
+        admissionNumber: s.adm,
+        admissionDate: new Date(),
+        
+        // Demographics (Defaults for seed)
+        motherTongue: 'SINHALA',
+        religion: 'BUDDHIST',
+        ethnicity: 'SINHALA',
+        
+        isActive: true,
+      },
+    });
+  }
+
+  console.log(`✅ Added ${studentsData.length} students successfully.`);
+
+  // -------------------------------------------
   // 4. Create Academic Year
   // -------------------------------------------
   const academicYear = await prisma.academicYear.upsert({

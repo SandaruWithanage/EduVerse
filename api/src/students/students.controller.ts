@@ -3,15 +3,21 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 
 @Controller('students')
-// Only these roles can view student lists
-@Roles(UserRole.SCHOOL_ADMIN, UserRole.TEACHER, UserRole.CLERK, UserRole.PRINCIPAL, UserRole.SUPER_ADMIN)
+// Define who is allowed to view the student list
+@Roles(
+  UserRole.SUPER_ADMIN,
+  UserRole.SCHOOL_ADMIN,
+  UserRole.PRINCIPAL,
+  UserRole.TEACHER,
+  UserRole.CLERK
+)
 export class StudentsController {
   
   @Get()
-  findAll(@Req() req: any) {
+  findAll( @Req() req: any) {
     // 🔒 RLS VALIDATION:
-    // If logged in as School A Admin, this returns ONLY School A students.
-    // If logged in as SUPER_ADMIN, RLS policy (if configured for SA) allows all or specific access.
+    // This query is intercepted by Prisma.
+    // It injects: WHERE "tenantId" = current_user_tenant
     return req.prisma.studentProfile.findMany();
   }
 }

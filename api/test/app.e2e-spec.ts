@@ -254,3 +254,117 @@ describe('UsersController (e2e)', () => {
     await prisma.user.delete({ where: { id: tempUser.id } });
   });
 });
+
+describe('School Data (e2e)', () => {
+  let app: INestApplication;
+  let superAdminToken: string;
+  let superAdminId: string;
+  const testSuperAdminEmail = 'testsuperadmin@example.com';
+  const testSuperAdminPassword = 'TestPassword@123';
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api');
+    await app.init();
+
+    // Ensure super admin exists (from previous tests setup)
+    const passwordHash = await bcrypt.hash(testSuperAdminPassword, 12);
+    let superAdmin = await prisma.user.findFirst({
+      where: { email: testSuperAdminEmail },
+    });
+
+    if (superAdmin) {
+      superAdmin = await prisma.user.update({
+        where: { id: superAdmin.id },
+        data: {
+          passwordHash,
+          role: UserRole.SUPER_ADMIN,
+          isActive: true,
+        },
+      });
+    } else {
+      superAdmin = await prisma.user.create({
+        data: {
+          email: testSuperAdminEmail,
+          passwordHash,
+          role: UserRole.SUPER_ADMIN,
+          isActive: true,
+        },
+      });
+    }
+    superAdminId = superAdmin.id;
+
+    // Log in as super admin to get token
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ email: testSuperAdminEmail, password: testSuperAdminPassword })
+      .expect(201);
+    superAdminToken = loginRes.body.accessToken;
+  });
+
+  afterAll(async () => {
+    // Clean up created user
+    await prisma.user.deleteMany({
+      where: { email: testSuperAdminEmail },
+    });
+    await app.close();
+    await prisma.$disconnect();
+  });
+
+  it('GET /api/students should return 200 OK and an array of students', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/students')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .expect(200);
+
+    expect(Array.isArray(response.body)).toBe(true);
+    expect(response.body.length).toBeGreaterThan(0); // Assuming students are seeded
+    expect(response.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.any(String),
+          fullName: expect.any(String),
+          tenantId: expect.any(String),
+          // Add other expected student properties here if needed
+        }),
+      ]),
+    );
+  });
+
+  it('GET /api/teachers should return 200 OK and an array of teachers', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/teachers')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .expect(200);
+
+    expect(Array.isArray(response.body)).toBe(true);
+    expect(response.body.length).toBeGreaterThan(0); // Assuming teachers are seeded
+    expect(response.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.any(String),
+          fullName: expect.any(String),
+          tenantId: expect.any(String),
+          // Add other expected teacher properties here if needed
+        }),
+      ]),
+    );
+  });
+
+  it('GET /api/students without token should return 401 Unauthorized', async () => {
+    await request(app.getHttpServer())
+      .get('/api/students')
+      .expect(401);
+  });
+
+  it('GET /api/teachers without token should return 401 Unauthorized', async () => {
+    await request(app.getHttpServer())
+      .get('/api/teachers')
+      .expect(401);
+  });
+});
+
