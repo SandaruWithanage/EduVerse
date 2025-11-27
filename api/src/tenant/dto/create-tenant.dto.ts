@@ -5,6 +5,8 @@ import {
   IsArray,
   ArrayNotEmpty,
   IsNumber,
+  IsEmail, // Added
+  MinLength, // Added
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { SchoolType, SchoolMedium } from '@prisma/client';
@@ -67,4 +69,11 @@ export class CreateTenantDto {
   @IsOptional()
   @IsNumber()
   longitude?: number;
+
+  @IsEmail()
+  adminEmail: string;
+
+  @IsString()
+  @MinLength(6)
+  adminPassword: string;
 }

@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import * as bcrypt from 'bcrypt'; // Added
+import { UserRole } from '@prisma/client'; // Added
 
 @Injectable()
 export class TenantService {
@@ -15,40 +17,62 @@ export class TenantService {
   // CREATE TENANT
   // ============================================================
   async create(dto: CreateTenantDto, user: any, ip: string, agent: string) {
-    const tenant = await this.prisma.tenant.create({
-      data: {
-        name: dto.name,
-        schoolCode: dto.schoolCode,
-        schoolType: dto.schoolType,
+    // 1. Hash the password first
+    const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
+    const hashedPassword = await bcrypt.hash(dto.adminPassword, saltRounds);
 
-        province: dto.province ?? null,
-        district: dto.district,
-        zone: dto.zone,
-        division: dto.division,
+    // 2. Run inside a Transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Step A: Create the Tenant
+      const tenant = await tx.tenant.create({
+        data: {
+          name: dto.name,
+          schoolCode: dto.schoolCode,
+          schoolType: dto.schoolType,
 
-        mediums: dto.mediums,
+          province: dto.province ?? null,
+          district: dto.district,
+          zone: dto.zone,
+          division: dto.division,
 
-        addressLine1: dto.addressLine1 ?? null,
-        addressLine2: dto.addressLine2 ?? null,
-        city: dto.city ?? null,
-        latitude: dto.latitude ?? null,
-        longitude: dto.longitude ?? null,
-      },
+          mediums: dto.mediums,
+
+          addressLine1: dto.addressLine1 ?? null,
+          addressLine2: dto.addressLine2 ?? null,
+          city: dto.city ?? null,
+          latitude: dto.latitude ?? null,
+          longitude: dto.longitude ?? null,
+        },
+      });
+
+      // Step B: Create the School Admin User linked to this Tenant
+      const adminUser = await tx.user.create({
+        data: {
+          email: dto.adminEmail,
+          passwordHash: hashedPassword,
+          role: UserRole.SCHOOL_ADMIN, // Force this role
+          tenantId: tenant.id,         // Link to the new school
+          isActive: true,
+        },
+      });
+
+      return { tenant, adminUser };
     });
 
+    // 3. Audit Log (Outside transaction to avoid locking audit table unnecessarily)
     await this.audit.log({
-      action: 'TENANT_CREATED',
-      tenantId: tenant.id,
-      userId: user.id,
+      action: 'TENANT_CREATED_WITH_ADMIN',
+      tenantId: result.tenant.id,
+      userId: user.id, // The Super Admin who performed this action
       ip,
       userAgent: agent,
       details: {
-        name: tenant.name,
-        schoolCode: tenant.schoolCode,
+        schoolName: result.tenant.name,
+        adminEmail: result.adminUser.email,
       },
     });
 
-    return tenant;
+    return result.tenant;
   }
 
   // ============================================================
