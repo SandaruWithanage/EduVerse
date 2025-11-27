@@ -1,42 +1,17 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-} from '@nestjs/common';
-import { TeachersService } from './teachers.service';
-import { CreateTeacherDto } from './dto/create-teacher.dto';
-import { UpdateTeacherDto } from './dto/update-teacher.dto';
+import { Controller, Get, Req } from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '@prisma/client';
 
 @Controller('teachers')
+// Only these roles can view teacher lists
+@Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.CLERK, UserRole.PRINCIPAL) 
 export class TeachersController {
-  constructor(private readonly teachersService: TeachersService) {}
-
-  @Post()
-  create(@Body() createTeacherDto: CreateTeacherDto) {
-    return this.teachersService.create(createTeacherDto);
-  }
-
+  
   @Get()
-  findAll() {
-    return this.teachersService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.teachersService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateTeacherDto: UpdateTeacherDto) {
-    return this.teachersService.update(+id, updateTeacherDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.teachersService.remove(+id);
+  findAll(@Req() req: any) {
+    // 🔒 RLS VALIDATION:
+    // This call uses the specific Prisma client instance attached to this request.
+    // It effectively runs: SELECT * FROM "TeacherProfile" WHERE "tenantId" = current_user_tenant;
+    return req.prisma.teacherProfile.findMany();
   }
 }

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
@@ -13,6 +13,8 @@ import { TenantModule } from './tenant/tenant.module';
 import { UsersModule } from './users/users.module';
 import { StudentsModule } from './students/students.module';
 import { TeachersModule } from './teachers/teachers.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard'; 
+import { RolesGuard } from './auth/guards/roles.guard';      
 
 @Module({
   imports: [
@@ -20,7 +22,7 @@ import { TeachersModule } from './teachers/teachers.module';
       isGlobal: true,
       envFilePath: ['.env.development', '.env'],
     }),
-    // 1. SECURITY: Enable Rate Limiting (10 requests per 60 seconds)
+    // 1. SECURITY: Rate Limiting
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
@@ -38,12 +40,22 @@ import { TeachersModule } from './teachers/teachers.module';
   controllers: [AppController],
   providers: [
     AppService,
-    // 2. SECURITY: Enable Global Rate Limiting Guard
+    // 2. SECURITY: Global Rate Limiting
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-    // 3. SECURITY: Enable RLS (Multi-tenancy)
+    // 3. SECURITY: Global Authentication (Token required everywhere)
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    // 4. SECURITY: Global RBAC (Roles check)
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+    // 5. SECURITY: Enable RLS (Multi-tenancy)
     {
       provide: APP_INTERCEPTOR,
       useClass: RlsInterceptor,
