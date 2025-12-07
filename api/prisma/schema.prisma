@@ -99,6 +99,13 @@ enum TeacherClassRole {
   ASSISTANT_TEACHER
 }
 
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
 
 //
 // -------------------------
@@ -138,6 +145,8 @@ model StudentProfile {
   updatedAt    DateTime  @updatedAt
 
   enrollments StudentGradeClass[]
+  familyLinks StudentParent[]     // NEW
+  attendanceRecords Attendance[]       // NEW
 
   // Constraints required by NEMIS
   @@unique([tenantId, indexNumber])
@@ -246,6 +255,7 @@ model Classroom {
 
   studentEnrollments StudentGradeClass[]
   teacherAssignments TeacherGradeClass[]
+  attendanceRecords  Attendance[]   // NEW
 
   /// Prevents: school → grade 6 → class B repeated twice
   @@unique([tenantId, gradeId, className])
@@ -283,7 +293,7 @@ model TeacherProfile {
   /// Teacher Identity Number (TIN) – nationally unique
   tin        String     @unique
 
-  /// Teaching subjects (Phase-1 as string list)
+  /// LEGACY: Phase-1 quick subject tags (we keep this for now)
   subjectCodes String[]
 
   /// Appointment type: Permanent, Temporary, Volunteer, Contract
@@ -308,6 +318,8 @@ model TeacherProfile {
   updatedAt  DateTime @updatedAt
 
   classAssignments TeacherGradeClass[]
+  subjects TeacherSubject[]   // NEW: full relational mapping
+  markedAttendances Attendance[]       // NEW: attendance they marked
 
   @@index([tenantId])
   @@index([tin])
@@ -333,20 +345,153 @@ model TeacherGradeClass {
   /// Class role: class teacher, subject teacher...
   roleInClass     TeacherClassRole
 
-  /// Optional subject if needed in future phases
-  subjectCode     String?
+  /// NEW: proper relation to Subject (instead of subjectCode String?)
+  subjectId       String?
+  subject         Subject?        @relation(fields: [subjectId], references: [id])
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  /// Prevent duplicate teacher assignment for same class and year
-  @@unique([teacherId, classId, academicYearId])
+  /// Updated unique: allow multiple teachers per class/year,
+  /// but not duplicate same teacher+subject+class+year
+  @@unique([teacherId, classId, academicYearId, subjectId])
 
   @@index([gradeId])
   @@index([classId])
   @@index([academicYearId])
 }
 
+// -------------------------
+// SUBJECTS & TEACHER SUBJECTS
+// -------------------------
+
+model Subject {
+  id        String   @id @default(uuid())
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  /// Short subject code (e.g. "SCI_G6_11")
+  code      String
+
+  /// Human-friendly name (e.g. "Science")
+  name      String
+
+  /// Grades for which this subject is valid (e.g. [6,7,8,9,10,11])
+  validGrades Int[]
+
+  /// Reverse relations
+  teacherSubjects   TeacherSubject[]
+  classAssignments  TeacherGradeClass[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model TeacherSubject {
+  id        String         @id @default(uuid())
+
+  tenantId  String
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+
+  teacherId String
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [id])
+
+  subjectId String
+  subject   Subject        @relation(fields: [subjectId], references: [id])
+
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([tenantId, teacherId, subjectId])
+  @@index([tenantId, teacherId])
+  @@index([tenantId, subjectId])
+}
+
+
+// -------------------------
+// PARENTS & FAMILY LINKS
+// -------------------------
+
+model Parent {
+  id        String   @id @default(uuid())
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  /// Linked auth user (role = PARENT)
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  firstName String
+  lastName  String
+  phone     String?
+  nic       String?   @unique
+
+  /// Many-to-many with students via junction table
+  students  StudentParent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model StudentParent {
+  id        String         @id @default(uuid())
+
+  tenantId  String
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id])
+
+  parentId  String
+  parent    Parent         @relation(fields: [parentId], references: [id])
+
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([tenantId, studentId, parentId])
+  @@index([tenantId, studentId])
+  @@index([tenantId, parentId])
+}
+
+
+// -------------------------
+// ATTENDANCE
+// -------------------------
+
+model Attendance {
+  id              String           @id @default(uuid())
+
+  tenantId        String
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+
+  studentId       String
+  student         StudentProfile   @relation(fields: [studentId], references: [id])
+
+  classId         String
+  classroom       Classroom        @relation(fields: [classId], references: [id])
+
+  academicYearId  Int
+  academicYear    AcademicYear     @relation(fields: [academicYearId], references: [id])
+
+  date            DateTime
+  status          AttendanceStatus
+
+  markedByTeacherId String
+  markedByTeacher   TeacherProfile @relation(fields: [markedByTeacherId], references: [id])
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([tenantId, date])
+  @@index([classId, date])
+}
 
 //
 // -------------------------
@@ -379,9 +524,10 @@ model User {
 
   /// Relations
   refreshTokens  RefreshToken[]
-  teacherProfile TeacherProfile?   // one teacher profile per user (optional)
-  auditLogs AuditLog[]
-
+  auditLogs      AuditLog[]
+  
+  teacherProfile TeacherProfile?   // Existing
+  parentProfile  Parent?           // THIS IS THE MISSING LINE [NEW]
 
   /// Email is unique per tenant (SUPER_ADMIN unique because tenantId=null)
   @@unique([tenantId, email])
@@ -390,7 +536,6 @@ model User {
   @@index([tenantId, role])
   @@index([isActive])
 }
-
 model RefreshToken {
   id        String   @id @default(uuid())
 
@@ -454,6 +599,13 @@ model Tenant {
   classrooms  Classroom[]
   auditLogs AuditLog[]
 
+  // NEW:
+  subjects        Subject[]
+  parents         Parent[]
+  teacherSubjects TeacherSubject[]
+  studentParents  StudentParent[]
+  attendance      Attendance[]
+
   /// Recommended indexes for NEMIS-level reporting
   @@index([district, zone])
   @@index([schoolType])
@@ -476,7 +628,7 @@ model AcademicYear {
   grades      Grade[]
   studentEnrollments StudentGradeClass[]
   teacherAssignments TeacherGradeClass[]
-
+  attendanceRecords   Attendance[] // NEW
 
   @@unique([label])
   @@index([active])

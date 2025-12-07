@@ -15,6 +15,7 @@ import { StudentsModule } from './students/students.module';
 import { TeachersModule } from './teachers/teachers.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard'; 
 import { RolesGuard } from './auth/guards/roles.guard';      
+import { SubjectsModule } from './subjects/subjects.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     UsersModule,
     StudentsModule,
     TeachersModule,
+    SubjectsModule,
   ],
   controllers: [AppController],
   providers: [
