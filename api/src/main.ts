@@ -7,57 +7,44 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // ----------------------------------------------------------
-  // 1. CRITICAL: Enable Shutdown Hooks
-  // ----------------------------------------------------------
-  // Required for Prisma to disconnect gracefully when you stop
-  // the server (Ctrl+C). Prevents "too many clients" DB errors.
-  app.enableShutdownHooks();
+  // 1. Security Headers (Helmet)
+  app.use(helmet());
 
-  // ----------------------------------------------------------
-  // 2. Security & CORS
-  // ----------------------------------------------------------
-  app.use(helmet()); // Set security headers
-
+  // 2. Secure CORS Configuration
+  // We allow the frontend URL defined in .env, or localhost for development
+  const whitelist = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : ['http://localhost:3000'];
+  
   app.enableCors({
-    // Allow env variable to override, otherwise default to open for dev
-    origin: process.env.CORS_ORIGIN || '*',
-    credentials: true,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      if (whitelist.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        console.warn(`Blocked CORS request from: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true, // Allow cookies/auth headers
   });
 
-  // ----------------------------------------------------------
-  // 3. Global Validation Pipe
-  // ----------------------------------------------------------
+  // 3. Global Validation Pipe (Strict Mode)
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // 🛡️ Strip properties not in DTO
-      forbidNonWhitelisted: true, // 🛡️ Throw error if extra properties sent
-      transform: true, // ✨ REQUIRED: Enables @Transform() in your DTOs
-
-      // ✨ NEW: Quality of Life improvement
-      // Automatically converts types (e.g. query param "limit=10" (string) -> 10 (number))
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
+      whitelist: true,            // Strip properties not in the DTO
+      forbidNonWhitelisted: true, // Throw error if extra properties are sent
+      transform: true,            // Auto-transform payloads to DTO instances
     }),
   );
 
-  // ----------------------------------------------------------
   // 4. Global Exception Filter
-  // ----------------------------------------------------------
-  app.useGlobalFilters(
-    new AllExceptionsFilter(app.get(HttpAdapterHost), new ConsoleLogger()),
-  );
+  const httpAdapterHost = app.get(HttpAdapterHost);
+  const logger = new ConsoleLogger();
+  app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost, logger));
 
-  // ----------------------------------------------------------
-  // 5. Configuration
-  // ----------------------------------------------------------
-  app.setGlobalPrefix('api');
-
-  const port = process.env.PORT || 4000;
-  await app.listen(port);
-
-  console.log(`🚀 EduVerse API running on http://localhost:${port}/api`);
+  await app.listen(process.env.PORT ?? 4000);
+  console.log(`🚀 Application is running on: ${await app.getUrl()}`);
 }
-
 bootstrap();

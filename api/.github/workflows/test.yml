@@ -7,12 +7,54 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./api # Important for monorepo!
+        working-directory: ./api # Ensures all commands run inside the api folder
+
+    # 1. Spin up a temporary Database for this workflow
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: eduverse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v3
+
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-      - run: npm ci
-      - run: npx prisma generate
-      - run: npm run test      # Runs unit tests
+          cache: 'npm'
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # 2. Linting Gate (Fails if code style/quality rules are broken)
+      - name: Lint Code
+        run: npm run lint
+
+      # 3. Prisma Generation (Required for Build & Migration)
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      # 4. Build Verification (Fails if TypeScript Strict Mode errors exist)
+      - name: Build Application
+        run: npm run build
+
+      # 5. Migration Check (Verifies SQL files apply cleanly to a fresh DB)
+      - name: Verify Database Migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgres://test_user:test_password@localhost:5432/eduverse_test
+
+      # 6. Unit Tests
+      - name: Run Unit Tests
+        run: npm run test
