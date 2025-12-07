@@ -10,8 +10,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // Where to read the token from:
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_ACCESS_SECRET,
-    });
+            secretOrKey: process.env.JWT_ACCESS_SECRET!,     });
   }
 
   // Whatever we return here becomes req.user

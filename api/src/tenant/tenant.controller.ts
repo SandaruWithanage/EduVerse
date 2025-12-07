@@ -1,68 +1,26 @@
-import {
-  Controller,
-  Post,
-  Get,
-  Patch,
-  Param,
-  Body,
-  Ip,
-  Headers,
-  ValidationPipe,
-} from '@nestjs/common';
-
-import { Roles } from '../auth/decorators/roles.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Controller, Post, Body, Req, UseGuards, Ip, Headers } from '@nestjs/common';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
-import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '@prisma/client';
+import type { AuthenticatedRequest } from '../auth/types'; // Import the new type
 
 @Controller('tenants')
-@Roles('SUPER_ADMIN')
 export class TenantController {
   constructor(private readonly tenantService: TenantService) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
   create(
-    @Body() dto: CreateTenantDto,
-    @CurrentUser() user: any,
+    @Body() createTenantDto: CreateTenantDto,
+    @Req() req: AuthenticatedRequest,
     @Ip() ip: string,
     @Headers('user-agent') agent: string,
   ) {
-    return this.tenantService.create(dto, user, ip, agent);
-  }
-
-  @Get()
-  findAll() {
-    return this.tenantService.findAll();
-  }
-
-  @Get(':id')
-  findOne(
-    @Param('id') id: string,
-    @CurrentUser() user: any,
-    @Ip() ip: string,
-    @Headers('user-agent') agent: string,
-  ) {
-    return this.tenantService.findOne(id, user, ip, agent);
-  }
-
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    // 🛡️ SECURE VERSION: We keep whitelist: true to prevent hacking
-    @Body(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true, // <--- KEEPS SECURITY ON
-        forbidNonWhitelisted: true, // <--- Enforces schema
-        skipMissingProperties: false, // PartialType adds @IsOptional, so this can be false
-      }),
-    )
-    dto: UpdateTenantDto,
-    @CurrentUser() user: any,
-    @Ip() ip: string,
-    @Headers('user-agent') agent: string,
-  ) {
-    return this.tenantService.update(id, dto, user, ip, agent);
+    // Now TypeScript knows that req.user has a tenantId
+    return this.tenantService.create(createTenantDto, req.user, ip, agent);
   }
 }
