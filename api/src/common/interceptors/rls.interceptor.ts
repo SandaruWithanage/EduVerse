@@ -1,3 +1,4 @@
+/*
 import {
   CallHandler,
   ExecutionContext,
@@ -45,3 +46,4 @@ export class RlsInterceptor implements NestInterceptor {
     return next.handle();
   }
 }
+*/

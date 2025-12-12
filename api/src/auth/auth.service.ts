@@ -23,7 +23,7 @@ export class AuthService {
     ip: string,
     userAgent: string,
   ) {
-    const user = await this.prisma.user.findFirst({ where: { email } });
+    const user = await this.prisma.client.user.findFirst({ where: { email } });
 
     // Don't return immediately, just flag it
     let isValid = !!user;
@@ -97,7 +97,7 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    await this.prisma.refreshToken.create({
+    await this.prisma.client.refreshToken.create({
       data: {
         userId: user.id,
         tokenHash,
@@ -148,7 +148,7 @@ export class AuthService {
     const userId: string = decoded.sub;
 
     // 2) Find stored refresh tokens for this user
-    const tokens = await this.prisma.refreshToken.findMany({
+    const tokens = await this.prisma.client.refreshToken.findMany({
       where: { userId },
     });
 
@@ -173,7 +173,7 @@ export class AuthService {
     }
 
     // 4) Delete used token (rotation)
-    await this.prisma.refreshToken.delete({
+    await this.prisma.client.refreshToken.delete({
       where: { id: validRecord.id },
     });
 
@@ -202,7 +202,7 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    await this.prisma.refreshToken.create({
+    await this.prisma.client.refreshToken.create({
       data: {
         userId,
         tokenHash,
@@ -244,7 +244,7 @@ export class AuthService {
 
     const userId = decoded.sub;
 
-    await this.prisma.refreshToken.deleteMany({
+    await this.prisma.client.refreshToken.deleteMany({
       where: { userId },
     });
 

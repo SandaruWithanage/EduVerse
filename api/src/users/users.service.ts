@@ -97,8 +97,8 @@ export class UsersService {
     const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
     const passwordHash = await bcrypt.hash(dto.password, saltRounds);
 
-    // Create user
-    const user = await this.prisma.user.create({
+    // 🔒 SAFE: Update to use .client
+    const user = await this.prisma.client.user.create({
       data: {
         email: dto.email,
         passwordHash,
@@ -135,7 +135,8 @@ export class UsersService {
   async findAll(currentUser: any) {
     if (currentUser.role === UserRole.SUPER_ADMIN) {
       // See all users
-      return this.prisma.user.findMany({
+      // 🔒 SAFE: Update to use .client
+      return this.prisma.client.user.findMany({
         select: {
           id: true,
           email: true,
@@ -153,7 +154,8 @@ export class UsersService {
     }
 
     // Per-tenant list for School Admin
-    return this.prisma.user.findMany({
+    // 🔒 SAFE: Update to use .client
+    return this.prisma.client.user.findMany({
       where: { tenantId: currentUser.tenantId },
       select: {
         id: true,
@@ -169,7 +171,8 @@ export class UsersService {
 
   // ---------- GET ONE USER ----------
   async findOne(id: string, currentUser: any) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    // 🔒 SAFE: Update to use .client
+    const user = await this.prisma.client.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
     // Only restrict access for non-super
@@ -198,7 +201,10 @@ export class UsersService {
     ip: string,
     agent: string,
   ) {
-    const existing = await this.prisma.user.findUnique({ where: { id } });
+    // 🔒 SAFE: Update to use .client
+    const existing = await this.prisma.client.user.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException('User not found');
 
     // Enforce permissions
@@ -218,7 +224,8 @@ export class UsersService {
       }
     }
 
-    const updated = await this.prisma.user.update({
+    // 🔒 SAFE: Update to use .client
+    const updated = await this.prisma.client.user.update({
       where: { id },
       data: {
         email: dto.email ?? undefined,
@@ -256,7 +263,8 @@ export class UsersService {
     ip: string,
     agent: string,
   ) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    // 🔒 SAFE: Update to use .client
+    const user = await this.prisma.client.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
 
     // Enforce permissions
@@ -265,13 +273,15 @@ export class UsersService {
     const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
     const passwordHash = await bcrypt.hash(dto.newPassword, saltRounds);
 
-    await this.prisma.user.update({
+    // 🔒 SAFE: Update to use .client
+    await this.prisma.client.user.update({
       where: { id },
       data: { passwordHash },
     });
 
     // Revoke refresh tokens to force re-login
-    await this.prisma.refreshToken.deleteMany({
+    // 🔒 SAFE: Update to use .client
+    await this.prisma.client.refreshToken.deleteMany({
       where: { userId: id },
     });
 

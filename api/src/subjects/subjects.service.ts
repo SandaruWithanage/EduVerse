@@ -1,26 +1,36 @@
 import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma.service';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
 
 @Injectable()
 export class SubjectsService {
+  constructor(private readonly prisma: PrismaService) {}
+
   create(createSubjectDto: CreateSubjectDto) {
-    return 'This action adds a new subject';
+    // 🔒 SAFE: Using .client
+    return this.prisma.client.subject.create({
+      data: createSubjectDto,
+    });
   }
 
   findAll() {
-    return `This action returns all subjects`;
+    // 🔒 SAFE: Using .client (RLS applied)
+    return this.prisma.client.subject.findMany();
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} subject`;
+  findOne(id: string) {
+    return this.prisma.client.subject.findUnique({ where: { id } });
   }
 
-  update(id: number, updateSubjectDto: UpdateSubjectDto) {
-    return `This action updates a #${id} subject`;
+  update(id: string, updateSubjectDto: UpdateSubjectDto) {
+    return this.prisma.client.subject.update({
+      where: { id },
+      data: updateSubjectDto,
+    });
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} subject`;
+  remove(id: string) {
+    return this.prisma.client.subject.delete({ where: { id } });
   }
 }

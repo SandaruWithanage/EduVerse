@@ -1,10 +1,10 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
-import * as bcrypt from 'bcrypt'; // Added
-import { UserRole } from '@prisma/client'; // Added
+import * as bcrypt from 'bcrypt';
+import { UserRole } from '@prisma/client';
 
 @Injectable()
 export class TenantService {
@@ -22,7 +22,8 @@ export class TenantService {
     const hashedPassword = await bcrypt.hash(dto.adminPassword, saltRounds);
 
     // 2. Run inside a Transaction
-    const result = await this.prisma.$transaction(async (tx) => {
+    // 🔒 SAFE: Use .client.$transaction to ensure extension context is preserved/handled correctly
+    const result = await this.prisma.client.$transaction(async (tx) => {
       // Step A: Create the Tenant
       const tenant = await tx.tenant.create({
         data: {
@@ -79,14 +80,16 @@ export class TenantService {
   // GET ALL TENANTS
   // ============================================================
   async findAll() {
-    return this.prisma.tenant.findMany();
+    // 🔒 SAFE: .client
+    return this.prisma.client.tenant.findMany();
   }
 
   // ============================================================
   // GET ONE TENANT
   // ============================================================
   async findOne(id: string, user: any, ip: string, agent: string) {
-    const tenant = await this.prisma.tenant.findUnique({ where: { id } });
+    // 🔒 SAFE: .client
+    const tenant = await this.prisma.client.tenant.findUnique({ where: { id } });
 
     if (!tenant) throw new NotFoundException('Tenant not found');
 
@@ -111,7 +114,8 @@ export class TenantService {
     ip: string,
     agent: string,
   ) {
-    const tenant = await this.prisma.tenant.update({
+    // 🔒 SAFE: .client
+    const tenant = await this.prisma.client.tenant.update({
       where: { id },
       data: {
         name: dto.name ?? undefined,
