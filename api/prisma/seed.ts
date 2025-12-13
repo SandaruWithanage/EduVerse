@@ -18,6 +18,7 @@ import {
   Subject,
   TeacherProfile,
   StudentProfile,
+  GradeLevel,
 } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 
@@ -35,6 +36,14 @@ function getInitials(fullName: string) {
     .map((n) => n[0])
     .join(".");
 }
+
+function getGradeLevel(gradeNumber: number): GradeLevel {
+  if (gradeNumber >= 1 && gradeNumber <= 5) return GradeLevel.PRIMARY;
+  if (gradeNumber >= 6 && gradeNumber <= 9) return GradeLevel.JUNIOR;
+  if (gradeNumber >= 10 && gradeNumber <= 11) return GradeLevel.ORDINARY_LEVEL;
+  return GradeLevel.ADVANCED_LEVEL; // Grades 12–13
+}
+
 
 async function main() {
   console.log("🌱 Starting Phase 2 Seed...");
@@ -79,6 +88,21 @@ async function main() {
     },
   });
 
+  const curriculum = await prisma.curriculum.upsert({
+  where: { id: "curriculum-pre-2026" },
+  update: {},
+  create: {
+    id: "curriculum-pre-2026",
+    name: "Pre-2026",
+    startYear: 2015,
+    endYear: 2025,
+    isActive: true,
+  },
+});
+
+console.log("📚 Curriculum Ready");
+
+
   console.log("📅 Academic Year Ready");
 
   // ============================================================
@@ -93,6 +117,7 @@ async function main() {
       create: {
         tenantId: tenant.id,
         gradeNumber: i,
+        gradeLevel: getGradeLevel(i),
         name: `Grade ${i}`,
         academicYearId: academicYear.id,
       },
@@ -128,26 +153,48 @@ async function main() {
   console.log("📚 Seeding Subjects...");
 
   const subjectList = [
-    { code: "MATH_G10", name: "Mathematics", validGrades: [10, 11] },
-    { code: "SCI_G10", name: "Science", validGrades: [10, 11] },
-    { code: "ENG_G10", name: "English", validGrades: [10, 11] },
-    { code: "HIST_G10", name: "History", validGrades: [10, 11] },
-    { code: "ICT_G10", name: "ICT", validGrades: [10, 11] },
-    { code: "SIN_G10", name: "Sinhala", validGrades: [10, 11] },
-  ];
+  { code: "MATH_G10", name: "Mathematics", validGrades: [10, 11], gradeLevel: GradeLevel.ORDINARY_LEVEL },
+  { code: "SCI_G10", name: "Science", validGrades: [10, 11], gradeLevel: GradeLevel.ORDINARY_LEVEL },
+  { code: "ENG_G10", name: "English", validGrades: [10, 11], gradeLevel: GradeLevel.ORDINARY_LEVEL },
+  { code: "HIST_G10", name: "History", validGrades: [10, 11], gradeLevel: GradeLevel.ORDINARY_LEVEL },
+  { code: "ICT_G10", name: "ICT", validGrades: [10, 11], gradeLevel: GradeLevel.ORDINARY_LEVEL },
+  { code: "SIN_G10", name: "Sinhala", validGrades: [10, 11], gradeLevel: GradeLevel.ORDINARY_LEVEL },
+];
+
 
   const subjectsDB: Subject[] = [];
 
   for (const s of subjectList) {
     const subject = await prisma.subject.upsert({
-      where: { tenantId_code: { tenantId: tenant.id, code: s.code } },
-      update: {},
-      create: {
-        tenantId: tenant.id,
-        code: s.code,
-        name: s.name,
-        validGrades: s.validGrades,
-      },
+      where: {
+  tenantId_code_curriculumId: {
+    tenantId: tenant.id,
+    code: s.code,
+    curriculumId: curriculum.id,
+  },
+},
+update: {
+  name: s.name,
+  validGrades: s.validGrades,
+  gradeLevel: s.gradeLevel,
+  isExamSubject: true,
+  isCreditBearing: false,
+  credits: null,
+  stream: null,
+  },
+  create: {
+    tenantId: tenant.id,
+    code: s.code,
+    name: s.name,
+    gradeLevel: s.gradeLevel,
+    curriculumId: curriculum.id,
+    validGrades: s.validGrades,
+    isExamSubject: true,
+    isCreditBearing: false,
+    credits: null,
+    stream: null,
+  },
+
     });
     subjectsDB.push(subject);
   }

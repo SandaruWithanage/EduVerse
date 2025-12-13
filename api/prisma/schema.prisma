@@ -106,6 +106,13 @@ enum AttendanceStatus {
   EXCUSED
 }
 
+enum GradeLevel {
+  PRIMARY          // Grades 1–5
+  JUNIOR           // Grades 6–9
+  ORDINARY_LEVEL   // Grades 10–11 (O/L)
+  ADVANCED_LEVEL   // Grades 12–13 (A/L)
+}
+
 
 //
 // -------------------------
@@ -203,30 +210,28 @@ model Grade {
   /// Grade number: 1–13 (required by MOE)
   gradeNumber    Int
 
-  /// Optional grade display name (e.g., “Grade 6 English Medium”)
+  /// Explicit grade category (PRIMARY, JUNIOR, O/L, A/L)
+  gradeLevel     GradeLevel    // ⬅️ ADD HERE
+
+  /// Optional grade display name
   name           String?
 
-  /// Multi-tenant ownership
   tenantId       String
-  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  tenant         Tenant        @relation(fields: [tenantId], references: [id])
 
-  /// Optional link to academic year (NEMIS annual structures)
-  academicYearId Int?
-  academicYear   AcademicYear?  @relation(fields: [academicYearId], references: [id])
+ academicYearId Int?
+ academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
 
-  /// Classrooms under this grade
+
   classrooms     Classroom[]
 
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   studentEnrollments StudentGradeClass[]
   teacherAssignments TeacherGradeClass[]
 
-  /// Prevents duplicates per school
   @@unique([tenantId, gradeNumber])
-
-  /// Useful for filtering
   @@index([tenantId])
 }
 
@@ -255,7 +260,7 @@ model Classroom {
 
   studentEnrollments StudentGradeClass[]
   teacherAssignments TeacherGradeClass[]
-  attendanceRecords  Attendance[]   // NEW
+  attendanceRecords  Attendance[]
 
   /// Prevents: school → grade 6 → class B repeated twice
   @@unique([tenantId, gradeId, className])
@@ -374,21 +379,37 @@ model Subject {
   /// Short subject code (e.g. "SCI_G6_11")
   code      String
 
-  /// Human-friendly name (e.g. "Science")
+  /// Human-friendly name
   name      String
 
-  /// Grades for which this subject is valid (e.g. [6,7,8,9,10,11])
+  /// PRIMARY / JUNIOR / O/L / A/L
+  gradeLevel GradeLevel     // ⬅️ ADD
+
+  /// Used mainly for O/L & A/L
+  isExamSubject    Boolean  @default(false)
+  isCreditBearing Boolean  @default(false)
+  credits          Int?
+
+  /// A/L stream only (SCIENCE / COMMERCE / ARTS / TECHNOLOGY / VOCATIONAL)
+  stream           String?
+
+  /// Curriculum version (pre-2026, 2026 reform, etc.)
+  curriculumId     String
+  curriculum       Curriculum @relation(fields: [curriculumId], references: [id])
+
+  /// Grades for which this subject is valid
   validGrades Int[]
 
-  /// Reverse relations
+  /// Relations
   teacherSubjects   TeacherSubject[]
   classAssignments  TeacherGradeClass[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, code])
+  @@unique([tenantId, code, curriculumId])
   @@index([tenantId])
+  @@index([gradeLevel])
 }
 
 model TeacherSubject {
@@ -611,6 +632,31 @@ model Tenant {
   @@index([schoolType])
   @@index([isActive])
 }
+
+//
+// -------------------------
+// CURRICULUM (SYLLABUS VERSIONING)
+// -------------------------
+model Curriculum {
+  id        String   @id @default(uuid())
+
+  /// Human label
+  name      String   // e.g. "Pre-2026", "2026 Reform", "O/L 2028 Reform"
+
+  /// First year this curriculum applies
+  startYear Int
+
+  /// Optional end year (null = still active)
+  endYear   Int?
+
+  isActive  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  /// Reverse relations
+  subjects  Subject[]
+}
+
 
 //
 // -------------------------
