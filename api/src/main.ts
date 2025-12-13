@@ -11,15 +11,15 @@ async function bootstrap() {
   app.use(helmet());
 
   // 2. Secure CORS Configuration
-  // We allow the frontend URL defined in .env, or localhost for development
-  const whitelist = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : ['http://localhost:3000'];
-  
+  const whitelist = process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',')
+    : ['http://localhost:3000'];
+
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
-      
-      if (whitelist.indexOf(origin) !== -1) {
+
+      if (whitelist.includes(origin)) {
         callback(null, true);
       } else {
         console.warn(`Blocked CORS request from: ${origin}`);
@@ -27,15 +27,18 @@ async function bootstrap() {
       }
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true, // Allow cookies/auth headers
+    credentials: true,
   });
 
-  // 3. Global Validation Pipe (Strict Mode)
+  // 3. ✅ Global Validation Pipe (FIXED)
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,            // Strip properties not in the DTO
-      forbidNonWhitelisted: true, // Throw error if extra properties are sent
-      transform: true,            // Auto-transform payloads to DTO instances
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true, // ✅ REQUIRED
+      transformOptions: {
+        enableImplicitConversion: true, // ✅ REQUIRED (Date string → Date)
+      },
     }),
   );
 
@@ -47,4 +50,5 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 4000);
   console.log(`🚀 Application is running on: ${await app.getUrl()}`);
 }
+
 bootstrap();

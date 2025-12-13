@@ -364,18 +364,24 @@ async function main() {
   // ============================================================
   // 9. ADMIN USERS
   // ============================================================
-  await prisma.user.upsert({
-    where: {
-      id: "superadmin-id", // Use a fixed ID or query the database first
-    },
-    update: {},
-    create: {
-      tenantId: null,
-      email: "superadmin@eduverse.local",
-      passwordHash: devPassword,
-      role: UserRole.SUPER_ADMIN,
-    },
-  });
+  // Ensure no duplicate system users exist
+await prisma.user.deleteMany({
+  where: {
+    email: "superadmin@eduverse.local",
+    tenantId: null,
+  },
+});
+
+await prisma.user.create({
+  data: {
+    id: "superadmin-id",
+    tenantId: null,
+    email: "superadmin@eduverse.local",
+    passwordHash: devPassword,
+    role: UserRole.SUPER_ADMIN,
+  },
+});
+
 
   await prisma.user.upsert({
     where: {

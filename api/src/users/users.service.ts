@@ -28,21 +28,19 @@ export class UsersService {
       throw new BadRequestException('You are not bound to a tenant');
     }
 
-    // Must be SCHOOL_ADMIN to manage users
+    // Must be SCHOOL_ADMIN
     if (currentUser.role !== UserRole.SCHOOL_ADMIN) {
       throw new BadRequestException('You are not allowed to manage users');
     }
 
-    // Tenant restriction: Cannot manage users from other schools
+    // Tenant isolation
     if (targetUser.tenantId !== currentUser.tenantId) {
       throw new BadRequestException('You can only manage users in your tenant');
     }
 
-    // Role hierarchy restriction: School Admin cannot modify other Admins or Supers
+    // Role hierarchy restriction
     const forbiddenRoles = [UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN];
-    // Logic: If target is an Admin/Super, deny access
     if (forbiddenRoles.includes(targetUser.role)) {
-      // Exception: Users can usually edit themselves, but here we are talking about management actions
       if (currentUser.id !== targetUser.id) {
         throw new BadRequestException(
           'You cannot manage other admins or super admins',
@@ -58,26 +56,19 @@ export class UsersService {
     ip: string,
     agent: string,
   ) {
-    // School admin cannot create SUPER_ADMIN or SCHOOL_ADMIN (only teacher/parent/clerk)
-    const allowedBySchoolAdmin: string[] = [
-      UserRole.TEACHER,
-      UserRole.PARENT,
-      UserRole.CLERK,
-    ];
-
-    // Determine tenantId for new user
     let tenantId: string | null = null;
 
     if (currentUser.role === UserRole.SUPER_ADMIN) {
-      // Super admin can create any role, but must provide tenantId (unless creating another Super Admin)
-      if (dto.role !== UserRole.SUPER_ADMIN && !dto.tenantId) {
-        // Optional: Enforce tenantId for non-super users
-        // throw new BadRequestException('tenantId is required');
-      }
-      tenantId = dto.tenantId ?? null; // Allow null for Super Admin users
+      // SUPER_ADMIN: tenantId optional (null for super users)
+      tenantId = dto.role === UserRole.SUPER_ADMIN ? null : dto.tenantId ?? null;
     } else if (currentUser.role === UserRole.SCHOOL_ADMIN) {
-      // School admin checks
-      if (!allowedBySchoolAdmin.includes(dto.role)) {
+      const allowed: UserRole[] = [
+        UserRole.TEACHER,
+        UserRole.PARENT,
+        UserRole.CLERK,
+      ];
+
+      if (!allowed.includes(dto.role)) {
         throw new BadRequestException(
           'School admins can only create TEACHER, PARENT, or CLERK users',
         );
@@ -87,17 +78,14 @@ export class UsersService {
         throw new BadRequestException('Your user is not attached to a tenant');
       }
 
-      // Force tenant to their own
       tenantId = currentUser.tenantId;
     } else {
       throw new BadRequestException('You are not allowed to create users');
     }
 
-    // Hash password
     const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
     const passwordHash = await bcrypt.hash(dto.password, saltRounds);
 
-    // 🔒 SAFE: Update to use .client
     const user = await this.prisma.client.user.create({
       data: {
         email: dto.email,
@@ -107,7 +95,6 @@ export class UsersService {
       },
     });
 
-    // Audit
     await this.audit.log({
       action: 'USER_CREATED',
       tenantId: tenantId ?? undefined,
@@ -121,7 +108,6 @@ export class UsersService {
       },
     });
 
-    // Hide passwordHash in response
     return {
       id: user.id,
       email: user.email,
@@ -134,8 +120,6 @@ export class UsersService {
   // ---------- LIST USERS ----------
   async findAll(currentUser: any) {
     if (currentUser.role === UserRole.SUPER_ADMIN) {
-      // See all users
-      // 🔒 SAFE: Update to use .client
       return this.prisma.client.user.findMany({
         select: {
           id: true,
@@ -153,8 +137,6 @@ export class UsersService {
       throw new BadRequestException('Your user is not attached to a tenant');
     }
 
-    // Per-tenant list for School Admin
-    // 🔒 SAFE: Update to use .client
     return this.prisma.client.user.findMany({
       where: { tenantId: currentUser.tenantId },
       select: {
@@ -169,31 +151,29 @@ export class UsersService {
     });
   }
 
-  // ---------- GET ONE USER ----------
+  // ---------- GET ONE USER (HARDENED) ----------
   async findOne(id: string, currentUser: any) {
-    // 🔒 SAFE: Update to use .client
-    const user = await this.prisma.client.user.findUnique({ where: { id } });
+    const user = await this.prisma.client.user.findFirst({
+      where: {
+        id,
+        ...(currentUser.role !== UserRole.SUPER_ADMIN
+          ? { tenantId: currentUser.tenantId }
+          : {}),
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        tenantId: true,
+        isActive: true,
+      },
+    });
+
     if (!user) throw new NotFoundException('User not found');
-
-    // Only restrict access for non-super
-    if (currentUser.role !== UserRole.SUPER_ADMIN) {
-      if (!currentUser.tenantId || user.tenantId !== currentUser.tenantId) {
-        throw new BadRequestException(
-          'You cannot view this user (Different Tenant)',
-        );
-      }
-    }
-
-    return {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      tenantId: user.tenantId,
-      isActive: user.isActive,
-    };
+    return user;
   }
 
-  // ---------- UPDATE USER ----------
+  // ---------- UPDATE USER (HARDENED) ----------
   async update(
     id: string,
     dto: UpdateUserDto,
@@ -201,32 +181,34 @@ export class UsersService {
     ip: string,
     agent: string,
   ) {
-    // 🔒 SAFE: Update to use .client
-    const existing = await this.prisma.client.user.findUnique({
-      where: { id },
+    const existing = await this.prisma.client.user.findFirst({
+      where: {
+        id,
+        ...(currentUser.role !== UserRole.SUPER_ADMIN
+          ? { tenantId: currentUser.tenantId }
+          : {}),
+      },
     });
+
     if (!existing) throw new NotFoundException('User not found');
 
-    // Enforce permissions
     this.assertCanManageTarget(currentUser, existing);
 
-    // School admin cannot promote roles above allowed set
     if (dto.role && currentUser.role === UserRole.SCHOOL_ADMIN) {
-      const allowedBySchoolAdmin: string[] = [
+      const allowed: UserRole[] = [
         UserRole.TEACHER,
         UserRole.PARENT,
         UserRole.CLERK,
       ];
-      if (!allowedBySchoolAdmin.includes(dto.role)) {
+      if (!allowed.includes(dto.role)) {
         throw new BadRequestException(
           'You cannot assign this role as School Admin',
         );
       }
     }
 
-    // 🔒 SAFE: Update to use .client
     const updated = await this.prisma.client.user.update({
-      where: { id },
+      where: { id: existing.id },
       data: {
         email: dto.email ?? undefined,
         role: dto.role ?? undefined,
@@ -255,7 +237,7 @@ export class UsersService {
     };
   }
 
-  // ---------- RESET PASSWORD ----------
+  // ---------- RESET PASSWORD (HARDENED) ----------
   async resetPassword(
     id: string,
     dto: ResetPasswordDto,
@@ -263,26 +245,29 @@ export class UsersService {
     ip: string,
     agent: string,
   ) {
-    // 🔒 SAFE: Update to use .client
-    const user = await this.prisma.client.user.findUnique({ where: { id } });
+    const user = await this.prisma.client.user.findFirst({
+      where: {
+        id,
+        ...(currentUser.role !== UserRole.SUPER_ADMIN
+          ? { tenantId: currentUser.tenantId }
+          : {}),
+      },
+    });
+
     if (!user) throw new NotFoundException('User not found');
 
-    // Enforce permissions
     this.assertCanManageTarget(currentUser, user);
 
     const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
     const passwordHash = await bcrypt.hash(dto.newPassword, saltRounds);
 
-    // 🔒 SAFE: Update to use .client
     await this.prisma.client.user.update({
-      where: { id },
+      where: { id: user.id },
       data: { passwordHash },
     });
 
-    // Revoke refresh tokens to force re-login
-    // 🔒 SAFE: Update to use .client
     await this.prisma.client.refreshToken.deleteMany({
-      where: { userId: id },
+      where: { userId: user.id },
     });
 
     await this.audit.log({

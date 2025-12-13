@@ -15,25 +15,33 @@ export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
   async log(data: AuditLogDto) {
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          actionCode: data.action,
-          tenantId: data.tenantId || null,
-          userId: data.userId || null,
-          ipAddress: data.ip || 'UNKNOWN',
-          userAgent: data.userAgent || 'UNKNOWN',
-          detailsJson: data.details ? JSON.stringify(data.details) : null,
-          retentionUntil: new Date(
-            new Date().setFullYear(new Date().getFullYear() + 1),
-          ),
-        },
-      });
+    const payload = {
+      actionCode: data.action,
+      tenantId: data.tenantId || null,
+      userId: data.userId || null,
+      ipAddress: data.ip || 'UNKNOWN',
+      userAgent: data.userAgent || 'UNKNOWN',
+      detailsJson: data.details ? JSON.stringify(data.details) : null,
+      retentionUntil: new Date(
+        new Date().setFullYear(new Date().getFullYear() + 1),
+      ),
+    };
 
-      console.log(`[AUDIT] Logged: ${data.action}`);
+    const SYSTEM_ACTIONS = ['LOGIN_SUCCESS', 'LOGIN_FAILED', 'LOGOUT'];
+    const forceSystemWrite = SYSTEM_ACTIONS.includes(data.action);
+
+    try {
+      if (forceSystemWrite) {
+        await this.prisma.runUnscoped(async (client) => {
+          return client.auditLog.create({ data: payload });
+        });
+      } else {
+        await this.prisma.client.auditLog.create({ data: payload });
+      }
     } catch (err) {
-      console.error('[AUDIT ERROR]', err);
-      // NEVER throw. Audit must not break main process.
+      // Intentionally minimal: do not throw from audit path
+      // eslint-disable-next-line no-console
+      console.error(`[AUDIT ERROR] Failed to write audit log (${data.action})`, err);
     }
   }
 }

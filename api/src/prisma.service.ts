@@ -1,5 +1,10 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { ClsService } from 'nestjs-cls';
 
 @Injectable()
@@ -7,62 +12,144 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  // 1. Store the extended "safe" client instance
-  private extendedClient: any;
+  // 🔒 This is the ONLY client services are allowed to use
+  private extendedClient!: PrismaClient;
 
   constructor(private readonly cls: ClsService) {
-    super({
-      log: ['warn', 'error'],
-    });
+    super({ log: ['warn', 'error'] });
   }
 
   async onModuleInit() {
     await this.$connect();
 
-    // 2. Globally extend the client to intercept ALL queries
-    this.extendedClient = this.$extends({
+    // Capture base client to avoid recursion
+    const baseClient = this;
+
+    this.extendedClient = baseClient.$extends({
       query: {
         $allModels: {
-          $allOperations: async ({ args, query }) => {
-            // 3. Retrieve Context from CLS (set by your JwtAuthGuard)
-            const tenantId = this.cls.get('tenantId');
-            const role = this.cls.get('userRole');
-
-            // 4. BYPASS RLS for Super Admins (Optional but recommended)
-            if (role === 'SUPER_ADMIN') {
-              return query(args);
+          $allOperations: async ({ model, operation, args }) => {
+            /**
+             * 🚨 FAIL-FAST SAFETY
+             * If TX_CONFIGURED is true, someone is incorrectly using
+             * this.prisma.client INSIDE prisma.transaction().
+             */
+            if (this.cls.get('TX_CONFIGURED')) {
+              throw new InternalServerErrorException(
+                `Unsafe Prisma usage detected.
+Do NOT use this.prisma.client inside prisma.transaction().
+Use the provided 'tx' argument instead.`,
+              );
             }
 
-            // 5. ENFORCE RLS: If a tenant context exists, wrap in transaction
-            if (tenantId) {
-              return this.$transaction(async (tx) => {
-                // Set Postgres session variables strictly for this transaction
-                // The 'true' flag ensures these reset after the transaction commits/rollbacks
-                await tx.$executeRawUnsafe(
-                  `SELECT set_config('app.tenant_id', $1, true), set_config('app.role', $2, true)`,
-                  tenantId,
-                  role || 'ANONYMOUS',
-                );
-                return query(args);
+            // 1️⃣ Read request context
+            const tenantId = this.cls.get('tenantId') ?? '';
+            const role = this.cls.get('userRole') ?? 'ANONYMOUS';
+            const userId = this.cls.get('userId') ?? '';
+            const isSystem = this.cls.get('isSystem') ?? false;
+
+            // 2️⃣ Decide DB role
+            const dbRole =
+              isSystem || role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : role;
+
+            /**
+             * 3️⃣ RLS SAFE EXECUTION
+             * - Start transaction → guarantees single DB connection
+             * - Set RLS session variables on THAT connection
+             * - Execute query on SAME connection
+             */
+            return baseClient.$transaction(async (tx) => {
+              await tx.$executeRaw`
+                SELECT
+                  set_config('app.tenant_id', ${tenantId}, true),
+                  set_config('app.role', ${dbRole}, true),
+                  set_config('app.user_id', ${userId}, true)
+              `;
+
+              return this.cls.run(async () => {
+                this.cls.set('TX_CONFIGURED', true);
+                return (tx as any)[model][operation](args);
               });
-            }
-
-            // 6. Fallback: Public routes or no-context
-            // RLS Policies in DB will naturally block access if app.tenant_id is missing
-            return query(args);
+            });
           },
         },
       },
-    });
+    }) as PrismaClient;
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
   }
 
-  // 🌟 SAFEST WAY TO USE PRISMA
-  // Use 'this.prisma.client.model.findMany()' in your services
-  get client() {
-    return this.extendedClient || this;
+  /**
+   * 🌟 SAFE CLIENT
+   * MUST be used for all normal queries
+   */
+  get client(): PrismaClient {
+    if (!this.extendedClient) {
+      throw new InternalServerErrorException(
+        'PrismaService not initialized: secure RLS client missing.',
+      );
+    }
+    return this.extendedClient;
+  }
+
+  /**
+   * 🔄 SAFE TRANSACTION
+   * Use for multi-query atomic operations
+   */
+  async transaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    const tenantId = this.cls.get('tenantId') ?? '';
+    const role = this.cls.get('userRole') ?? 'ANONYMOUS';
+    const userId = this.cls.get('userId') ?? '';
+    const isSystem = this.cls.get('isSystem') ?? false;
+
+    const dbRole =
+      isSystem || role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : role;
+
+    return super.$transaction(async (tx) => {
+      // Set session variables ONCE for entire transaction
+      await tx.$executeRaw`
+        SELECT
+          set_config('app.tenant_id', ${tenantId}, true),
+          set_config('app.role', ${dbRole}, true),
+          set_config('app.user_id', ${userId}, true)
+      `;
+
+      return this.cls.run(async () => {
+        this.cls.set('TX_CONFIGURED', true);
+        return fn(tx);
+      });
+    });
+  }
+
+  /**
+   * 🔓 SYSTEM MODE (login, cron jobs)
+   */
+  async runUnscoped<T>(
+    fn: (prisma: PrismaClient) => Promise<T>,
+  ): Promise<T> {
+    return this.cls.run(async () => {
+      this.cls.set('isSystem', true);
+      return fn(this.client);
+    });
+  }
+
+  /**
+   * 🛡️ MANUAL CONTEXT (refresh / logout)
+   */
+  async runWithContext<T>(
+    ctx: { tenantId: string | null; role: string; userId: string },
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', ctx.tenantId);
+      this.cls.set('userRole', ctx.role);
+      this.cls.set('userId', ctx.userId);
+      this.cls.set('isSystem', false);
+      return fn();
+    });
   }
 }

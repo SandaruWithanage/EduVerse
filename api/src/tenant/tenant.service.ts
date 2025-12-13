@@ -14,17 +14,19 @@ export class TenantService {
   ) {}
 
   // ============================================================
-  // CREATE TENANT
+  // CREATE TENANT (SUPER_ADMIN)
   // ============================================================
-  async create(dto: CreateTenantDto, user: any, ip: string, agent: string) {
-    // 1. Hash the password first
+  async create(
+    dto: CreateTenantDto,
+    user: any,
+    ip: string,
+    agent: string,
+  ) {
     const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
     const hashedPassword = await bcrypt.hash(dto.adminPassword, saltRounds);
 
-    // 2. Run inside a Transaction
-    // 🔒 SAFE: Use .client.$transaction to ensure extension context is preserved/handled correctly
+    // 🔒 Transaction: tenant + school admin must be atomic
     const result = await this.prisma.client.$transaction(async (tx) => {
-      // Step A: Create the Tenant
       const tenant = await tx.tenant.create({
         data: {
           name: dto.name,
@@ -46,13 +48,12 @@ export class TenantService {
         },
       });
 
-      // Step B: Create the School Admin User linked to this Tenant
       const adminUser = await tx.user.create({
         data: {
           email: dto.adminEmail,
           passwordHash: hashedPassword,
-          role: UserRole.SCHOOL_ADMIN, // Force this role
-          tenantId: tenant.id,         // Link to the new school
+          role: UserRole.SCHOOL_ADMIN,
+          tenantId: tenant.id,
           isActive: true,
         },
       });
@@ -60,11 +61,11 @@ export class TenantService {
       return { tenant, adminUser };
     });
 
-    // 3. Audit Log (Outside transaction to avoid locking audit table unnecessarily)
+    // 🔍 Audit outside transaction
     await this.audit.log({
       action: 'TENANT_CREATED_WITH_ADMIN',
       tenantId: result.tenant.id,
-      userId: user.id, // The Super Admin who performed this action
+      userId: user.id,
       ip,
       userAgent: agent,
       details: {
@@ -77,35 +78,31 @@ export class TenantService {
   }
 
   // ============================================================
-  // GET ALL TENANTS
+  // GET ALL TENANTS (SUPER_ADMIN)
   // ============================================================
   async findAll() {
-    // 🔒 SAFE: .client
-    return this.prisma.client.tenant.findMany();
+    return this.prisma.client.tenant.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   // ============================================================
-  // GET ONE TENANT
+  // GET ONE TENANT (SUPER_ADMIN)
   // ============================================================
-  async findOne(id: string, user: any, ip: string, agent: string) {
-    // 🔒 SAFE: .client
-    const tenant = await this.prisma.client.tenant.findUnique({ where: { id } });
-
-    if (!tenant) throw new NotFoundException('Tenant not found');
-
-    await this.audit.log({
-      action: 'TENANT_VIEWED',
-      tenantId: id,
-      userId: user.id,
-      ip,
-      userAgent: agent,
+  async findOne(id: string) {
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id },
     });
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
 
     return tenant;
   }
 
   // ============================================================
-  // UPDATE TENANT
+  // UPDATE TENANT (FUTURE USE)
   // ============================================================
   async update(
     id: string,
@@ -113,8 +110,8 @@ export class TenantService {
     user: any,
     ip: string,
     agent: string,
-  ) {
-    // 🔒 SAFE: .client
+  ) 
+  {
     const tenant = await this.prisma.client.tenant.update({
       where: { id },
       data: {
