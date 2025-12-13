@@ -20,24 +20,30 @@ export class SubjectsService {
   const tenantId = this.cls.get('tenantId');
   const role = this.cls.get('userRole');
 
-  if (role !== 'SUPER_ADMIN' && !tenantId) {
+  // 🔒 Only admins can create subjects
+  if (!tenantId || role === 'TEACHER') {
     throw new ForbiddenException();
   }
 
   return this.prisma.client.subject.create({
     data: {
-      ...(dto as any),
-      tenantId,
+      ...dto,      // ✅ no "as any"
+      tenantId,    // ✅ enforced from CLS
     },
   });
 }
 
-  async findAll() {
-    return this.prisma.client.subject.findMany({
-      where: { ...tenantWhere(this.cls) },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
+
+  async findAll(grade?: number) {
+  return this.prisma.client.subject.findMany({
+    where: {
+      ...tenantWhere(this.cls),
+      ...(grade ? { validGrades: { has: grade } } : {}),
+    },
+    orderBy: { name: 'asc' },
+  });
+}
+
 
   async findOne(id: string) {
     const subject = await this.prisma.client.subject.findFirst({
@@ -52,6 +58,10 @@ export class SubjectsService {
   }
 
   async update(id: string, dto: UpdateSubjectDto) {
+  const role = this.cls.get('userRole');
+  if (role === 'TEACHER') {
+    throw new ForbiddenException();
+}
     // 🔒 Ownership check first
     const existing = await this.prisma.client.subject.findFirst({
       where: { ...tenantWhere(this.cls), id },
@@ -69,6 +79,10 @@ export class SubjectsService {
 
   async remove(id: string) {
     // 🔒 Ownership check first
+    const role = this.cls.get('userRole');
+    if (role === 'TEACHER') {
+      throw new ForbiddenException();
+}
     const existing = await this.prisma.client.subject.findFirst({
       where: { ...tenantWhere(this.cls), id },
     });
