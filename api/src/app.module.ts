@@ -17,6 +17,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';      
 import { SubjectsModule } from './subjects/subjects.module';
 import { ClsModule } from 'nestjs-cls'; // <--- Import ClsModule
+import { AllocationsModule } from './allocations/allocations.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ClsModule } from 'nestjs-cls'; // <--- Import ClsModule
     StudentsModule,
     TeachersModule,
     SubjectsModule,
+    AllocationsModule,
   ],
   controllers: [AppController],
   providers: [
