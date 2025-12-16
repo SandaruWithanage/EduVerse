@@ -15,10 +15,10 @@ generator client {
 
 // School Type (MOE official classification)
 enum SchoolType {
-  ONE_AB     // "1AB"
-  ONE_C      // "1C"
-  TYPE_2     // "2"
-  TYPE_3     // "3"
+  ONE_AB // "1AB"
+  ONE_C // "1C"
+  TYPE_2 // "2"
+  TYPE_3 // "3"
   OTHER
 }
 
@@ -86,10 +86,10 @@ enum MotherTongue {
 }
 
 enum AdmissionStatus {
-  NEW             // first time in school
-  PROMOTED        // standard promotion
-  REPEATED        // repeated grade
-  TRANSFERRED_IN  // new from another school
+  NEW // first time in school
+  PROMOTED // standard promotion
+  REPEATED // repeated grade
+  TRANSFERRED_IN // new from another school
   TRANSFERRED_OUT // left to another school
 }
 
@@ -107,12 +107,16 @@ enum AttendanceStatus {
 }
 
 enum GradeLevel {
-  PRIMARY          // Grades 1–5
-  JUNIOR           // Grades 6–9
-  ORDINARY_LEVEL   // Grades 10–11 (O/L)
-  ADVANCED_LEVEL   // Grades 12–13 (A/L)
+  PRIMARY // Grades 1–5
+  JUNIOR // Grades 6–9
+  ORDINARY_LEVEL // Grades 10–11 (O/L)
+  ADVANCED_LEVEL // Grades 12–13 (A/L)
 }
 
+enum AddressType {
+  PERMANENT
+  CURRENT
+}
 
 //
 // -------------------------
@@ -120,22 +124,28 @@ enum GradeLevel {
 // -------------------------
 
 model StudentProfile {
-  id           String   @id @default(uuid())
+  id String @id @default(uuid())
 
   /// Tenant (school) this student belongs to
-  tenantId     String
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   /// Identity fields
-  fullName     String
-  initials     String?
-  dateOfBirth  DateTime
-  gender       Gender
-  
+  fullName    String
+  initials    String?
+  dateOfBirth DateTime
+  gender      Gender
+
+  /// NEMIS extensions (Step 4A)
+  nic                String? // optional (mandatory if age >= 15)
+  birthCertificateNo String?
+  civilStatus        String? // SINGLE, MARRIED, etc. (enum later)
+  medium             SchoolMedium?
+
   /// NEMIS-required identifiers
-  indexNumber      String    // Student Index Number (SIS)
-  admissionNumber  String
-  admissionDate    DateTime
+  indexNumber     String // Student Index Number (SIS)
+  admissionNumber String
+  admissionDate   DateTime
 
   /// Demographic attributes
   motherTongue MotherTongue
@@ -143,90 +153,111 @@ model StudentProfile {
   ethnicity    Ethnicity
 
   /// Status flags
-  isActive     Boolean   @default(true)
+  isActive Boolean @default(true)
 
   /// For optimistic concurrency control
-  rowVersion   Int       @default(1)
+  rowVersion Int @default(1)
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  enrollments StudentGradeClass[]
-  familyLinks StudentParent[]     // NEW
-  attendanceRecords Attendance[]       // NEW
+  enrollments       StudentGradeClass[]
+  familyLinks       StudentParent[] // NEW
+  attendanceRecords Attendance[] // NEW
+  addresses         StudentAddress[]
 
   // Constraints required by NEMIS
   @@unique([tenantId, indexNumber])
   @@unique([tenantId, admissionNumber])
-
   // Useful indexes
   @@index([tenantId])
   @@index([gender])
   @@index([isActive])
 }
 
+model StudentAddress {
+  id        String @id @default(uuid())
+  tenantId  String
+  studentId String
+
+  type           AddressType
+  addressLine1   String
+  addressLine2   String?
+  city           String?
+  gsDivisionCode String
+  districtCode   String
+
+  telephone        String?
+  mobile           String
+  residingFromDate DateTime?
+
+  student StudentProfile @relation(fields: [studentId], references: [id])
+  tenant  Tenant         @relation(fields: [tenantId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, studentId])
+}
+
 model StudentGradeClass {
-  id             String          @id @default(uuid())
+  id String @id @default(uuid())
 
   /// Links
-  studentId      String
-  student        StudentProfile  @relation(fields: [studentId], references: [id])
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id])
 
-  gradeId        String
-  grade          Grade           @relation(fields: [gradeId], references: [id])
+  gradeId String
+  grade   Grade  @relation(fields: [gradeId], references: [id])
 
-  classId        String
-  classroom      Classroom       @relation(fields: [classId], references: [id])
+  classId   String
+  classroom Classroom @relation(fields: [classId], references: [id])
 
   academicYearId Int
-  academicYear   AcademicYear    @relation(fields: [academicYearId], references: [id])
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
 
   /// NEMIS-required admission status
   admissionStatus AdmissionStatus
 
   /// Reasons for transfer / repeat / etc.
-  transferReason  String?
+  transferReason String?
 
   /// Index or roll number inside the class
-  classIndex      Int?
+  classIndex Int?
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   /// A student should have only ONE enrollment per academic year per school
   /// NEMIS requirement, avoids duplicates
   @@unique([studentId, academicYearId])
-
   /// Performance indexes
   @@index([classId])
   @@index([gradeId])
   @@index([academicYearId])
 }
 
-
 model Grade {
-  id             String        @id @default(uuid())
+  id String @id @default(uuid())
 
   /// Grade number: 1–13 (required by MOE)
-  gradeNumber    Int
+  gradeNumber Int
 
   /// Explicit grade category (PRIMARY, JUNIOR, O/L, A/L)
-  gradeLevel     GradeLevel    // ⬅️ ADD HERE
+  gradeLevel GradeLevel // ⬅️ ADD HERE
 
   /// Optional grade display name
-  name           String?
+  name String?
 
-  tenantId       String
-  tenant         Tenant        @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
- academicYearId Int?
- academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
+  academicYearId Int?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
 
+  classrooms Classroom[]
 
-  classrooms     Classroom[]
-
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   studentEnrollments StudentGradeClass[]
   teacherAssignments TeacherGradeClass[]
@@ -236,27 +267,27 @@ model Grade {
 }
 
 model Classroom {
-  id          String   @id @default(uuid())
+  id String @id @default(uuid())
 
   /// Class belongs to a Grade
-  gradeId     String
-  grade       Grade    @relation(fields: [gradeId], references: [id])
+  gradeId String
+  grade   Grade  @relation(fields: [gradeId], references: [id])
 
   /// Multi-tenant safety
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   /// Class name/section (A, B, C…)
-  className   String
+  className String
 
   /// e.g., “6B”, “10A”
-  classCode   String
+  classCode String
 
   /// Optional capacity (future use)
-  capacity    Int?
+  capacity Int?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   studentEnrollments StudentGradeClass[]
   teacherAssignments TeacherGradeClass[]
@@ -264,39 +295,36 @@ model Classroom {
 
   /// Prevents: school → grade 6 → class B repeated twice
   @@unique([tenantId, gradeId, className])
-
   /// Prevent duplicate classCode inside same tenant
   @@unique([tenantId, classCode])
-
   @@index([tenantId])
   @@index([gradeId])
 }
-
 
 //
 // -------------------------
 // TEACHER PROFILE
 // -------------------------
 model TeacherProfile {
-  id         String   @id @default(uuid())
+  id String @id @default(uuid())
 
   /// Tenant (School) this teacher belongs to
-  tenantId   String
-  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   /// Optional link to auth user account
-  userId     String?   @unique     
-  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   /// Full name (as per NIC / NEMIS entry)
-  fullName   String
-  initials   String?
+  fullName String
+  initials String?
 
   /// National Identity Card number
-  nic        String     @unique
+  nic String @unique
 
   /// Teacher Identity Number (TIN) – nationally unique
-  tin        String     @unique
+  tin String @unique
 
   /// LEGACY: Phase-1 quick subject tags (we keep this for now)
   subjectCodes String[]
@@ -316,15 +344,14 @@ model TeacherProfile {
   motherTongue MotherTongue
   religion     Religion
   ethnicity    Ethnicity
-  
 
   /// Standard timestamps
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  classAssignments TeacherGradeClass[]
-  subjects TeacherSubject[]   // NEW: full relational mapping
-  markedAttendances Attendance[]       // NEW: attendance they marked
+  classAssignments  TeacherGradeClass[]
+  subjects          TeacherSubject[] // NEW: full relational mapping
+  markedAttendances Attendance[] // NEW: attendance they marked
 
   @@index([tenantId])
   @@index([tin])
@@ -332,35 +359,34 @@ model TeacherProfile {
 }
 
 model TeacherGradeClass {
-  id              String          @id @default(uuid())
+  id String @id @default(uuid())
 
   /// Links
-  teacherId       String
-  teacher         TeacherProfile  @relation(fields: [teacherId], references: [id])
+  teacherId String
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [id])
 
-  gradeId         String
-  grade           Grade           @relation(fields: [gradeId], references: [id])
+  gradeId String
+  grade   Grade  @relation(fields: [gradeId], references: [id])
 
-  classId         String
-  classroom       Classroom       @relation(fields: [classId], references: [id])
+  classId   String
+  classroom Classroom @relation(fields: [classId], references: [id])
 
-  academicYearId  Int
-  academicYear    AcademicYear    @relation(fields: [academicYearId], references: [id])
+  academicYearId Int
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
 
   /// Class role: class teacher, subject teacher...
-  roleInClass     TeacherClassRole
+  roleInClass TeacherClassRole
 
   /// NEW: proper relation to Subject (instead of subjectCode String?)
-  subjectId       String?
-  subject         Subject?        @relation(fields: [subjectId], references: [id])
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id])
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   /// Updated unique: allow multiple teachers per class/year,
   /// but not duplicate same teacher+subject+class+year
   @@unique([teacherId, classId, academicYearId, subjectId])
-
   @@index([gradeId])
   @@index([classId])
   @@index([academicYearId])
@@ -371,38 +397,38 @@ model TeacherGradeClass {
 // -------------------------
 
 model Subject {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   /// Short subject code (e.g. "SCI_G6_11")
-  code      String
+  code String
 
   /// Human-friendly name
-  name      String
+  name String
 
   /// PRIMARY / JUNIOR / O/L / A/L
-  gradeLevel GradeLevel     // ⬅️ ADD
+  gradeLevel GradeLevel // ⬅️ ADD
 
   /// Used mainly for O/L & A/L
-  isExamSubject    Boolean  @default(false)
-  isCreditBearing Boolean  @default(false)
-  credits          Int?
+  isExamSubject   Boolean @default(false)
+  isCreditBearing Boolean @default(false)
+  credits         Int?
 
   /// A/L stream only (SCIENCE / COMMERCE / ARTS / TECHNOLOGY / VOCATIONAL)
-  stream           String?
+  stream String?
 
   /// Curriculum version (pre-2026, 2026 reform, etc.)
-  curriculumId     String
-  curriculum       Curriculum @relation(fields: [curriculumId], references: [id])
+  curriculumId String
+  curriculum   Curriculum @relation(fields: [curriculumId], references: [id])
 
   /// Grades for which this subject is valid
   validGrades Int[]
 
   /// Relations
-  teacherSubjects   TeacherSubject[]
-  classAssignments  TeacherGradeClass[]
+  teacherSubjects  TeacherSubject[]
+  classAssignments TeacherGradeClass[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -413,47 +439,46 @@ model Subject {
 }
 
 model TeacherSubject {
-  id        String         @id @default(uuid())
+  id String @id @default(uuid())
 
-  tenantId  String
-  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   teacherId String
   teacher   TeacherProfile @relation(fields: [teacherId], references: [id])
 
   subjectId String
-  subject   Subject        @relation(fields: [subjectId], references: [id])
+  subject   Subject @relation(fields: [subjectId], references: [id])
 
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, teacherId, subjectId])
   @@index([tenantId, teacherId])
   @@index([tenantId, subjectId])
 }
 
-
 // -------------------------
 // PARENTS & FAMILY LINKS
 // -------------------------
 
 model Parent {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   /// Linked auth user (role = PARENT)
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   firstName String
   lastName  String
   phone     String?
-  nic       String?   @unique
+  nic       String? @unique
 
   /// Many-to-many with students via junction table
-  students  StudentParent[]
+  students StudentParent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -462,53 +487,54 @@ model Parent {
 }
 
 model StudentParent {
-  id        String         @id @default(uuid())
+  id String @id @default(uuid())
 
-  tenantId  String
-  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   studentId String
   student   StudentProfile @relation(fields: [studentId], references: [id])
 
-  parentId  String
-  parent    Parent         @relation(fields: [parentId], references: [id])
+  parentId String
+  parent   Parent @relation(fields: [parentId], references: [id])
 
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  isPrimaryGuardian Boolean @default(true)
 
   @@unique([tenantId, studentId, parentId])
   @@index([tenantId, studentId])
   @@index([tenantId, parentId])
 }
 
-
 // -------------------------
 // ATTENDANCE
 // -------------------------
 
 model Attendance {
-  id              String           @id @default(uuid())
+  id String @id @default(uuid())
 
-  tenantId        String
-  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  studentId       String
-  student         StudentProfile   @relation(fields: [studentId], references: [id])
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id])
 
-  classId         String
-  classroom       Classroom        @relation(fields: [classId], references: [id])
+  classId   String
+  classroom Classroom @relation(fields: [classId], references: [id])
 
-  academicYearId  Int
-  academicYear    AcademicYear     @relation(fields: [academicYearId], references: [id])
+  academicYearId Int
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
 
-  date            DateTime
-  status          AttendanceStatus
+  date   DateTime
+  status AttendanceStatus
 
   markedByTeacherId String
   markedByTeacher   TeacherProfile @relation(fields: [markedByTeacherId], references: [id])
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId, date])
   @@index([classId, date])
@@ -519,57 +545,78 @@ model Attendance {
 // USER & AUTHENTICATION MODELS
 // -------------------------
 model User {
-  id       String   @id @default(uuid())
+  id String @id @default(uuid())
 
   /// Nullable for SUPER_ADMIN (system-wide)
   tenantId String?
-  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
 
   email        String
   passwordHash String
 
-  role         UserRole
-  isActive     Boolean   @default(true)
+  role     UserRole
+  isActive Boolean  @default(true)
+
+  /// INVITE TRACKING (STEP 4C-4)
+  invitePending Boolean   @default(false)
+  invitedAt     DateTime?
+  inviteSentAt  DateTime?
 
   /// Security / brute-force protection
-  failedLoginAttempts Int      @default(0)
+  failedLoginAttempts Int       @default(0)
   lockUntil           DateTime?
 
   lastLoginAt DateTime?
 
   /// Optimistic concurrency control
-  rowVersion  Int       @default(1)
+  rowVersion Int @default(1)
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   /// Relations
-  refreshTokens  RefreshToken[]
-  auditLogs      AuditLog[]
-  
-  teacherProfile TeacherProfile?   // Existing
-  parentProfile  Parent?           // THIS IS THE MISSING LINE [NEW]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  inviteTokens  InviteToken[]
+
+  teacherProfile TeacherProfile?
+  parentProfile  Parent?
 
   /// Email is unique per tenant (SUPER_ADMIN unique because tenantId=null)
   @@unique([tenantId, email])
-
   /// Useful for queries and dashboards
   @@index([tenantId, role])
   @@index([isActive])
 }
+
+model InviteToken {
+  id     String @id @default(uuid())
+  token  String @unique
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
 model RefreshToken {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
 
   /// Which user this token belongs to
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   /// Hashed refresh token (never store raw)
   tokenHash String
 
   /// Token lifecycle
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   revokedAt DateTime?
 
   @@index([userId])
@@ -581,23 +628,24 @@ model RefreshToken {
 // TENANT (SCHOOL)
 // -------------------------
 model Tenant {
-  id           String          @id @default(uuid())
-  name         String
+  id   String @id @default(uuid())
+  name String
 
   /// MOE school census number (unique national ID)
-  schoolCode   String          @unique
+  schoolCode String @unique
 
   /// MOE school category (1AB, 1C, Type 2, Type 3)
-  schoolType   SchoolType
+  schoolType SchoolType
 
   /// Location metadata for NEMIS
-  province     String?
-  district     String
-  zone         String
-  division     String
+  province String?
+  district String
+  zone     String
+  division String
 
   /// Mediums offered (Sinhala/Tamil/English)
   mediums      SchoolMedium[]
+  inviteOutbox InviteOutbox[]
 
   /// Optional address fields
   addressLine1 String?
@@ -605,20 +653,21 @@ model Tenant {
   city         String?
 
   /// Geo-coordinates for analytics or school maps
-  latitude     Float?
-  longitude    Float?
+  latitude  Float?
+  longitude Float?
 
-  isActive     Boolean         @default(true)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   /// RELATIONS
-  users           User[]
-  teacherProfiles TeacherProfile[]   // all teachers in this school
-  studentProfiles StudentProfile[]
-  grades      Grade[]
-  classrooms  Classroom[]
-  auditLogs AuditLog[]
+  users            User[]
+  teacherProfiles  TeacherProfile[] // all teachers in this school
+  studentProfiles  StudentProfile[]
+  grades           Grade[]
+  classrooms       Classroom[]
+  auditLogs        AuditLog[]
+  studentAddresses StudentAddress[]
 
   // NEW:
   subjects        Subject[]
@@ -638,76 +687,107 @@ model Tenant {
 // CURRICULUM (SYLLABUS VERSIONING)
 // -------------------------
 model Curriculum {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
 
   /// Human label
-  name      String   // e.g. "Pre-2026", "2026 Reform", "O/L 2028 Reform"
+  name String // e.g. "Pre-2026", "2026 Reform", "O/L 2028 Reform"
 
   /// First year this curriculum applies
   startYear Int
 
   /// Optional end year (null = still active)
-  endYear   Int?
+  endYear Int?
 
-  isActive  Boolean  @default(false)
+  isActive Boolean @default(false)
 
   createdAt DateTime @default(now())
 
   /// Reverse relations
-  subjects  Subject[]
+  subjects Subject[]
 }
-
 
 //
 // -------------------------
 // ACADEMIC YEAR
 // -------------------------
 model AcademicYear {
-  id          Int        @id @default(autoincrement())
-  label       String     // "2025", "2025/2026"
+  id          Int      @id @default(autoincrement())
+  label       String // "2025", "2025/2026"
   numericYear Int?
   start       DateTime
   end         DateTime
-  active      Boolean    @default(false)
+  active      Boolean  @default(false)
 
   /// Reverse relation for Grade.academicYear
-  grades      Grade[]
+  grades             Grade[]
   studentEnrollments StudentGradeClass[]
   teacherAssignments TeacherGradeClass[]
-  attendanceRecords   Attendance[] // NEW
+  attendanceRecords  Attendance[] // NEW
 
   @@unique([label])
   @@index([active])
 }
+
+enum InviteChannel {
+  EMAIL
+}
+
+enum InviteStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model InviteOutbox {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  channel InviteChannel @default(EMAIL)
+  status  InviteStatus  @default(PENDING)
+
+  toEmail     String
+  subject     String
+  payloadJson String // store message data (temp password, student name, etc.)
+
+  error    String?
+  attempts Int     @default(0)
+
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  @@index([tenantId, status])
+  @@index([status, createdAt])
+}
+
 model AuditLog {
-  id            String     @id @default(uuid())
+  id String @id @default(uuid())
 
   /// School-level multi-tenant isolation
-  tenantId      String?
-  tenant        Tenant?    @relation(fields: [tenantId], references: [id])
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
 
   /// User who performed the action (nullable for system events)
-  userId        String?
-  user          User?      @relation(fields: [userId], references: [id])
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
   /// Action identifier (e.g., LOGIN_SUCCESS, USER_CREATED)
-  actionCode    String
+  actionCode String
 
   /// JSON payload storing relevant info (field changes, entity IDs, etc.)
-  detailsJson   String?
+  detailsJson String?
 
   /// Client metadata
-  ipAddress     String?
-  userAgent     String?
+  ipAddress String?
+  userAgent String?
 
   /// Retention: logs can be purged after this date
   retentionUntil DateTime?
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([tenantId])
   @@index([userId])
   @@index([actionCode])
   @@index([createdAt])
 }
-

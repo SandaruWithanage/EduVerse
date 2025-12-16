@@ -6,42 +6,56 @@ import {
   Patch,
   Param,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
 import { StudentsService } from './students.service';
-import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
+import { CreateStudentAdmissionDto } from './dto/create-student-admission.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 @Controller('students')
-@Roles(
-  UserRole.SUPER_ADMIN,
-  UserRole.SCHOOL_ADMIN,
-  UserRole.PRINCIPAL,
-  UserRole.TEACHER,
-  UserRole.CLERK,
-)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class StudentsController {
   constructor(private readonly studentsService: StudentsService) {}
 
+  // ✅ STEP 4: NEMIS-compliant admission
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.CLERK)
-  create(@Body() createStudentDto: CreateStudentDto) {
-    return this.studentsService.create(createStudentDto);
+  createAdmission(@Body() dto: CreateStudentAdmissionDto) {
+    return this.studentsService.createAdmission(dto);
   }
 
+  // ✅ Read access
   @Get()
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.CLERK,
+    UserRole.PRINCIPAL,
+    UserRole.TEACHER,
+  )
   findAll() {
     return this.studentsService.findAll();
   }
 
   @Get(':id')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.CLERK,
+    UserRole.PRINCIPAL,
+    UserRole.TEACHER,
+  )
   findOne(@Param('id') id: string) {
     return this.studentsService.findOne(id);
   }
 
+  // ✅ Partial updates (NOT admission)
   @Patch(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.CLERK)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.SCHOOL_ADMIN)
   update(
     @Param('id') id: string,
     @Body() updateStudentDto: UpdateStudentDto,

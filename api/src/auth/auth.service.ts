@@ -1,11 +1,16 @@
-// src/auth/auth.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from '../prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { PasswordService } from './password.service';
+import { ActivateAccountDto } from './activate-account.dto';
 
 @Injectable()
 export class AuthService {
@@ -14,10 +19,49 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    private readonly passwordService: PasswordService,
   ) {}
 
   // ============================================================
-  // VALIDATE USER (Login bootstrap: tenant unknown -> bypass RLS)
+  // ACCOUNT ACTIVATION (INVITE FLOW)
+  // ============================================================
+  async activateAccount(dto: ActivateAccountDto) {
+    const { token, password } = dto;
+
+    const invite = await this.prisma.inviteToken.findFirst({
+      where: {
+        token,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: { user: true },
+    });
+
+    if (!invite) {
+      throw new BadRequestException('Invalid or expired invite token');
+    }
+
+    const passwordHash = await this.passwordService.hash(password);
+
+    await this.prisma.user.update({
+      where: { id: invite.userId },
+      data: {
+        passwordHash,
+        isActive: true,
+        invitePending: false,
+      },
+    });
+
+    await this.prisma.inviteToken.update({
+      where: { id: invite.id },
+      data: { usedAt: new Date() },
+    });
+
+    return { message: 'Account activated successfully' };
+  }
+
+  // ============================================================
+  // VALIDATE USER (LOGIN BOOTSTRAP)
   // ============================================================
   async validateUser(
     email: string,
@@ -25,19 +69,16 @@ export class AuthService {
     ip: string,
     userAgent: string,
   ) {
-    // 🔓 BOOTSTRAP: bypass tenant RLS safely for user lookup
-    const user = await this.prisma.runUnscoped(async (client) => {
-      return client.user.findFirst({ where: { email } });
-    });
+    const user = await this.prisma.runUnscoped((client) =>
+      client.user.findFirst({ where: { email } }),
+    );
 
     let isValid = !!user;
-
     if (user) {
       isValid = await bcrypt.compare(password, user.passwordHash);
     }
 
     if (!isValid) {
-      // 🔒 SECURITY: audit without leaking whether email exists
       await this.audit.log({
         action: 'LOGIN_FAILED',
         tenantId: user?.tenantId ?? undefined,
@@ -52,14 +93,18 @@ export class AuthService {
   }
 
   // ============================================================
-  // PAYLOAD BUILDER (JWT claims)
+  // JWT PAYLOAD BUILDER
   // ============================================================
-  private buildPayload(user: { id: string; tenantId: string | null; role: string }) {
+  private buildPayload(user: {
+    id: string;
+    tenantId: string | null;
+    role: string;
+  }) {
     return { sub: user.id, tenantId: user.tenantId, role: user.role };
   }
 
   // ============================================================
-  // LOGIN (called after validateUser() in controller)
+  // LOGIN
   // ============================================================
   async loginValidatedUser(
     user: { id: string; email: string; tenantId: string | null; role: string },
@@ -84,14 +129,12 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    // 🛡️ CONTEXT: controller route may be @Public, so explicitly hydrate CLS
     await this.prisma.runWithContext(
       { userId: user.id, role: user.role, tenantId: user.tenantId },
-      async () => {
-        return this.prisma.client.refreshToken.create({
+      () =>
+        this.prisma.client.refreshToken.create({
           data: { userId: user.id, tokenHash, expiresAt },
-        });
-      },
+        }),
     );
 
     await this.audit.log({
@@ -116,10 +159,12 @@ export class AuthService {
   }
 
   // ============================================================
-  // REFRESH TOKEN (public endpoint -> hydrate context from token)
+  // REFRESH TOKEN
   // ============================================================
   async refresh(refreshToken: string) {
-    if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token missing');
+    }
 
     let decoded: any;
     try {
@@ -139,10 +184,6 @@ export class AuthService {
         where: { userId },
       });
 
-      if (!tokens.length) {
-        throw new UnauthorizedException('Token not found or already used');
-      }
-
       let validRecord: { id: string; tokenHash: string } | null = null;
 
       for (const record of tokens) {
@@ -153,16 +194,17 @@ export class AuthService {
         }
       }
 
-      if (!validRecord) throw new UnauthorizedException('Refresh token invalid');
+      if (!validRecord) {
+        throw new UnauthorizedException('Refresh token invalid');
+      }
 
-      // rotation: delete old token
       await this.prisma.client.refreshToken.delete({
         where: { id: validRecord.id },
       });
 
       const payload = { sub: userId, tenantId, role };
 
-      const accessToken = await this.jwtService.signAsync(payload, {
+      const newAccessToken = await this.jwtService.signAsync(payload, {
         secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
         expiresIn: this.config.get('JWT_ACCESS_EXPIRY', '15m'),
       });
@@ -189,15 +231,20 @@ export class AuthService {
         details: { rotatedFromId: validRecord.id },
       });
 
-      return { accessToken, refreshToken: newRefreshToken };
+      return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      };
     });
   }
 
   // ============================================================
-  // LOGOUT (public endpoint -> hydrate context from token)
+  // LOGOUT
   // ============================================================
   async logout(refreshToken: string) {
-    if (!refreshToken) throw new UnauthorizedException('Refresh token missing');
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token missing');
+    }
 
     let decoded: any;
     try {
@@ -205,7 +252,6 @@ export class AuthService {
         secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
       });
     } catch {
-      // token invalid/expired => treat as logged out
       return { message: 'Logged out' };
     }
 
@@ -214,7 +260,9 @@ export class AuthService {
     const role: string = decoded.role;
 
     await this.prisma.runWithContext({ userId, role, tenantId }, async () => {
-      await this.prisma.client.refreshToken.deleteMany({ where: { userId } });
+      await this.prisma.client.refreshToken.deleteMany({
+        where: { userId },
+      });
     });
 
     await this.audit.log({

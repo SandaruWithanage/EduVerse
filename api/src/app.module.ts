@@ -18,6 +18,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
 import { SubjectsModule } from './subjects/subjects.module';
 import { ClsModule } from 'nestjs-cls'; // <--- Import ClsModule
 import { AllocationsModule } from './allocations/allocations.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { AllocationsModule } from './allocations/allocations.module';
     TeachersModule,
     SubjectsModule,
     AllocationsModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [

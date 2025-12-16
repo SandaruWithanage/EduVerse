@@ -6,13 +6,14 @@ import {
   Get,
   Ip,
   Headers,
-  UnauthorizedException, // ✅ FIXED
+  UnauthorizedException,
 } from '@nestjs/common';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { ActivateAccountDto } from './activate-account.dto';
 
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Roles } from './decorators/roles.decorator';
@@ -26,6 +27,9 @@ export class AuthController {
   // PUBLIC AUTH ROUTES
   // ============================================================
 
+  /**
+   * Login with email + password
+   */
   @Public()
   @Post('login')
   async login(
@@ -33,7 +37,6 @@ export class AuthController {
     @Ip() ip: string,
     @Headers('user-agent') userAgent: string,
   ) {
-    // 1. Validate credentials manually (logs success/failure)
     const user = await this.authService.validateUser(
       dto.email,
       dto.password,
@@ -45,25 +48,43 @@ export class AuthController {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // 2. Issue tokens + audit success inside the service
     return this.authService.loginValidatedUser(user, ip, userAgent);
   }
 
+  /**
+   * Refresh access + refresh tokens
+   */
   @Public()
   @Post('refresh')
-  async refresh(@Body() dto: RefreshDto) {
+  refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  /**
+   * Logout (invalidate refresh tokens)
+   */
   @Public()
   @Post('logout')
-  async logout(@Body() dto: LogoutDto) {
+  logout(@Body() dto: LogoutDto) {
     return this.authService.logout(dto.refreshToken);
   }
 
+  /**
+   * Activate invited account (Parent invite flow)
+   */
+  @Public()
+  @Post('activate')
+  activateAccount(@Body() dto: ActivateAccountDto) {
+    return this.authService.activateAccount(dto);
+  }
+
   // ============================================================
-  // AUTHENTICATED USER
+  // AUTHENTICATED USER ROUTES
   // ============================================================
+
+  /**
+   * Get current authenticated user
+   */
   @Get('me')
   getMe(@CurrentUser() user: any) {
     return {
@@ -73,8 +94,12 @@ export class AuthController {
   }
 
   // ============================================================
-  // ADMIN ONLY
+  // ROLE-BASED ROUTES
   // ============================================================
+
+  /**
+   * SUPER_ADMIN only
+   */
   @Get('admin-area')
   @Roles('SUPER_ADMIN')
   adminArea(@CurrentUser() user: any) {
@@ -84,16 +109,14 @@ export class AuthController {
     };
   }
 
-  // ============================================================
-  // SCHOOL ADMIN ONLY
-  // ============================================================
+  /**
+   * SCHOOL_ADMIN (+ SUPER_ADMIN)
+   */
   @Get('school-admin-area')
-  @Roles('SCHOOL_ADMIN')
-  // If you want super admin to also access:
   @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
   schoolAdminArea(@CurrentUser() user: any) {
     return {
-      message: 'Welcome SCHOOL_ADMIN to School Admin Area!',
+      message: 'Welcome to School Admin Area!',
       user,
     };
   }
