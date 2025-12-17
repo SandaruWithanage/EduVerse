@@ -19,6 +19,7 @@ import { SubjectsModule } from './subjects/subjects.module';
 import { ClsModule } from 'nestjs-cls'; // <--- Import ClsModule
 import { AllocationsModule } from './allocations/allocations.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EnrollmentModule } from './enrollment/enrollment.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     ]),
     PrismaModule,
     AuthModule,
+    ClsModule,
     AuditModule,
     TenantModule,
     UsersModule,
@@ -47,6 +49,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     SubjectsModule,
     AllocationsModule,
     ScheduleModule.forRoot(),
+    EnrollmentModule,
   ],
   controllers: [AppController],
   providers: [
