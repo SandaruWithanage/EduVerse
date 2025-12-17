@@ -7,25 +7,38 @@ import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-describe('AppController (e2e)', () => {
-  let app: INestApplication;
-  let superAdminToken: string;
-  let superAdminId: string;
-  const testSuperAdminEmail = 'testsuperadmin@example.com';
-  const testSuperAdminPassword = 'TestPassword@123';
+let app: INestApplication;
+let superAdminToken: string;
+let superAdminId: string;
+const testSuperAdminEmail = 'testsuperadmin@example.com';
+const testSuperAdminPassword = 'TestPassword@123';
 
-  beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
+beforeAll(async () => {
+  const moduleFixture: TestingModule = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
 
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api');
-    await app.init();
+  app = moduleFixture.createNestApplication();
+  app.setGlobalPrefix('api');
+  await app.init();
 
-    // 1. Create a super admin user
-    const passwordHash = await bcrypt.hash(testSuperAdminPassword, 12);
-    const superAdmin = await prisma.user.create({
+  // 1. Create a super admin user
+  const passwordHash = await bcrypt.hash(testSuperAdminPassword, 12);
+  let superAdmin = await prisma.user.findFirst({
+    where: { email: testSuperAdminEmail },
+  });
+
+  if (superAdmin) {
+    superAdmin = await prisma.user.update({
+      where: { id: superAdmin.id },
+      data: {
+        passwordHash,
+        role: UserRole.SUPER_ADMIN,
+        isActive: true,
+      },
+    });
+  } else {
+    superAdmin = await prisma.user.create({
       data: {
         email: testSuperAdminEmail,
         passwordHash,
@@ -33,93 +46,91 @@ describe('AppController (e2e)', () => {
         isActive: true,
       },
     });
-    superAdminId = superAdmin.id;
+  }
+  superAdminId = superAdmin.id;
 
-    // 2. Log in as super admin to get token
-    const loginRes = await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email: testSuperAdminEmail, password: testSuperAdminPassword })
-      .expect(201);
-    superAdminToken = loginRes.body.accessToken;
+  // 2. Log in as super admin to get token
+  const loginRes = await request(app.getHttpServer())
+    .post('/api/auth/login')
+    .send({ email: testSuperAdminEmail, password: testSuperAdminPassword })
+    .expect(201);
+  superAdminToken = loginRes.body.accessToken;
+});
+
+afterAll(async () => {
+  // Clean up created user
+  await prisma.user.deleteMany({
+    where: { email: testSuperAdminEmail },
   });
+  await app.close();
+  await prisma.$disconnect();
+});
 
-  afterAll(async () => {
-    // Clean up created user
-    await prisma.user.deleteMany({
-      where: { email: testSuperAdminEmail },
-    });
-    await app.close();
-    await prisma.$disconnect();
-  });
-
-  it('/api (GET)', () => {
+describe('AppController (e2e)', () => {
+  it('/api (GET) should return "Hello World!"', () => {
     return request(app.getHttpServer())
       .get('/api')
       .expect(200)
       .expect('Hello World!');
   });
+
+  it('/api/protected (GET) should return 401 Unauthorized if no token is provided', () => {
+    return request(app.getHttpServer())
+      .get('/api/protected')
+      .expect(401);
+  });
+
+  it('/api/protected (GET) should return 200 OK and protected message if a valid token is provided', () => {
+    return request(app.getHttpServer())
+      .get('/api/protected')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .expect(200)
+      .expect({ message: 'You are authenticated!' });
+  });
+
+  it('/api/admin-area (GET) should return 401 Unauthorized if no token is provided', () => {
+    return request(app.getHttpServer())
+      .get('/api/admin-area')
+      .expect(401);
+  });
+
+  it('/api/admin-area (GET) should return 200 OK and admin message if a valid SUPER_ADMIN token is provided', () => {
+    return request(app.getHttpServer())
+      .get('/api/admin-area')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .expect(200)
+      .expect({ message: 'Welcome SUPER_ADMIN!' });
+  });
+
+  // Note: If there were other roles, we'd add a test here to ensure non-SUPER_ADMIN roles get 403 Forbidden
+  // For example:
+  // it('/api/admin-area (GET) should return 403 Forbidden if a non-SUPER_ADMIN token is provided', async () => {
+  //   // Create a SCHOOL_ADMIN user and get their token
+  //   const schoolAdminUser = await prisma.user.create({
+  //     data: {
+  //       email: 'schooladmin@example.com',
+  //       passwordHash: await bcrypt.hash('SchoolAdmin@123', 12),
+  //       role: UserRole.SCHOOL_ADMIN,
+  //       isActive: true,
+  //     },
+  //   });
+  //   const loginRes = await request(app.getHttpServer())
+  //     .post('/api/auth/login')
+  //     .send({ email: 'schooladmin@example.com', password: 'SchoolAdmin@123' })
+  //     .expect(201);
+  //   const schoolAdminToken = loginRes.body.accessToken;
+
+  //   await request(app.getHttpServer())
+  //     .get('/api/admin-area')
+  //     .set('Authorization', `Bearer ${schoolAdminToken}`)
+  //     .expect(403);
+
+  //   // Clean up
+  //   await prisma.user.delete({ where: { id: schoolAdminUser.id } });
+  // });
 });
 
 describe('UsersController (e2e)', () => {
-  let app: INestApplication;
-  let superAdminToken: string;
-  let superAdminId: string;
-  const testSuperAdminEmail = 'testsuperadmin@example.com';
-  const testSuperAdminPassword = 'TestPassword@123';
-
-  beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api');
-    await app.init();
-
-    // 1. Create a super admin user
-    const passwordHash = await bcrypt.hash(testSuperAdminPassword, 12);
-    let superAdmin = await prisma.user.findFirst({
-      where: { email: testSuperAdminEmail },
-    });
-
-    if (superAdmin) {
-      superAdmin = await prisma.user.update({
-        where: { id: superAdmin.id },
-        data: {
-          passwordHash,
-          role: UserRole.SUPER_ADMIN,
-          isActive: true,
-        },
-      });
-    } else {
-      superAdmin = await prisma.user.create({
-        data: {
-          email: testSuperAdminEmail,
-          passwordHash,
-          role: UserRole.SUPER_ADMIN,
-          isActive: true,
-        },
-      });
-    }
-    superAdminId = superAdmin.id;
-
-    // 2. Log in as super admin to get token
-    const loginRes = await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email: testSuperAdminEmail, password: testSuperAdminPassword })
-      .expect(201);
-    superAdminToken = loginRes.body.accessToken;
-  });
-
-  afterAll(async () => {
-    // Clean up created user
-    await prisma.user.deleteMany({
-      where: { email: testSuperAdminEmail },
-    });
-    await app.close();
-    await prisma.$disconnect();
-  });
-
   it('should create a new user (POST /users)', async () => {
     const createUserDto = {
       email: 'newuser@example.com',
@@ -256,65 +267,6 @@ describe('UsersController (e2e)', () => {
 });
 
 describe('School Data (e2e)', () => {
-  let app: INestApplication;
-  let superAdminToken: string;
-  let superAdminId: string;
-  const testSuperAdminEmail = 'testsuperadmin@example.com';
-  const testSuperAdminPassword = 'TestPassword@123';
-
-  beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api');
-    await app.init();
-
-    // Ensure super admin exists (from previous tests setup)
-    const passwordHash = await bcrypt.hash(testSuperAdminPassword, 12);
-    let superAdmin = await prisma.user.findFirst({
-      where: { email: testSuperAdminEmail },
-    });
-
-    if (superAdmin) {
-      superAdmin = await prisma.user.update({
-        where: { id: superAdmin.id },
-        data: {
-          passwordHash,
-          role: UserRole.SUPER_ADMIN,
-          isActive: true,
-        },
-      });
-    } else {
-      superAdmin = await prisma.user.create({
-        data: {
-          email: testSuperAdminEmail,
-          passwordHash,
-          role: UserRole.SUPER_ADMIN,
-          isActive: true,
-        },
-      });
-    }
-    superAdminId = superAdmin.id;
-
-    // Log in as super admin to get token
-    const loginRes = await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email: testSuperAdminEmail, password: testSuperAdminPassword })
-      .expect(201);
-    superAdminToken = loginRes.body.accessToken;
-  });
-
-  afterAll(async () => {
-    // Clean up created user
-    await prisma.user.deleteMany({
-      where: { email: testSuperAdminEmail },
-    });
-    await app.close();
-    await prisma.$disconnect();
-  });
-
   it('GET /api/students should return 200 OK and an array of students', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/students')
