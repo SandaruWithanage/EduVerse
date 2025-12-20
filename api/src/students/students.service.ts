@@ -113,9 +113,12 @@ export class StudentsService {
     // -------------------------
     return this.prisma.client.$transaction(async (tx) => {
       // 4A) Create StudentProfile
+      const systemCode = await this.nextStudentSystemCode(tx, tenantId);
       const student = await tx.studentProfile.create({
+      
         data: {
           tenantId,
+          systemCode,
 
           fullName: profile.fullName,
           initials: profile.initials ?? null,
@@ -320,4 +323,26 @@ export class StudentsService {
       where: { id: existing.id },
     });
   }
+
+  private async nextStudentSystemCode(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+) {
+  const tenant = await tx.tenant.findUnique({
+    where: { id: tenantId },
+    select: { schoolCode: true },
+  });
+
+  if (!tenant) throw new Error('Tenant not found');
+
+  const count = await tx.studentProfile.count({
+    where: { tenantId },
+  });
+
+  const next = count + 1;
+
+  return `EV-${tenant.schoolCode}-STU-${String(next).padStart(6, '0')}`;
+}
+
+
 }

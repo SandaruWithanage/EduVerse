@@ -136,6 +136,9 @@ model StudentProfile {
   dateOfBirth DateTime
   gender      Gender
 
+  // 🔑 SYSTEM CODE (QR / BARCODE)
+  systemCode String
+
   /// NEMIS extensions (Step 4A)
   nic                String? // optional (mandatory if age >= 15)
   birthCertificateNo String?
@@ -165,7 +168,10 @@ model StudentProfile {
   familyLinks       StudentParent[] // NEW
   attendanceRecords Attendance[] // NEW
   addresses         StudentAddress[]
+  gateAttendances   GateAttendance[]
 
+  // 🔒 Must be unique per school
+  @@unique([tenantId, systemCode])
   // Constraints required by NEMIS
   @@unique([tenantId, indexNumber])
   @@unique([tenantId, admissionNumber])
@@ -320,6 +326,9 @@ model TeacherProfile {
   fullName String
   initials String?
 
+  // 🔑 SYSTEM CODE (QR / BARCODE)
+  systemCode String
+
   /// National Identity Card number
   nic String @unique
 
@@ -353,6 +362,8 @@ model TeacherProfile {
   subjects          TeacherSubject[] // NEW: full relational mapping
   markedAttendances Attendance[] // NEW: attendance they marked
 
+  // 🔒 Must be unique per school
+  @@unique([tenantId, systemCode])
   @@index([tenantId])
   @@index([tin])
   @@index([nic])
@@ -527,17 +538,58 @@ model Attendance {
   academicYearId Int
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
 
-  date   DateTime
+  /// Date of attendance (normalized to 00:00)
+  date DateTime
+
+  /// Period number (1,2,3…)
+  period Int
+
   status AttendanceStatus
 
-  markedByTeacherId String
-  markedByTeacher   TeacherProfile @relation(fields: [markedByTeacherId], references: [id])
+  markedByTeacherId String?
+  markedByTeacher   TeacherProfile? @relation(fields: [markedByTeacherId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// 🔒 ONE record per student per class per period per day
+  @@unique([tenantId, classId, academicYearId, studentId, date, period])
+  /// 🔍 Performance indexes
   @@index([tenantId, date])
   @@index([classId, date])
+}
+
+model GateAttendance {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id])
+
+  academicYearId Int
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  /// Date normalized to 00:00
+  date DateTime
+
+  /// Time student entered school
+  arrivalTime DateTime?
+
+  /// PRESENT | LATE | ABSENT
+  status AttendanceStatus
+
+  /// Optional gate device identifier
+  scannedByDevice String?
+
+  createdAt DateTime @default(now())
+
+  /// One gate record per student per day per academic year
+  @@unique([studentId, academicYearId, date])
+  /// Performance indexes (NON-NEGOTIABLE)
+  @@index([tenantId, date])
+  @@index([status])
 }
 
 //
@@ -644,8 +696,9 @@ model Tenant {
   division String
 
   /// Mediums offered (Sinhala/Tamil/English)
-  mediums      SchoolMedium[]
-  inviteOutbox InviteOutbox[]
+  mediums         SchoolMedium[]
+  inviteOutbox    InviteOutbox[]
+  gateAttendances GateAttendance[]
 
   /// Optional address fields
   addressLine1 String?
@@ -723,6 +776,7 @@ model AcademicYear {
   studentEnrollments StudentGradeClass[]
   teacherAssignments TeacherGradeClass[]
   attendanceRecords  Attendance[] // NEW
+  gateAttendances    GateAttendance[]
 
   @@unique([label])
   @@index([active])

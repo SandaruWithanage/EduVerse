@@ -25,13 +25,18 @@ export class TeachersService {
     const tenantId = this.cls.get('tenantId');
     const role = this.cls.get('userRole');
 
-    // 🔒 Tenant is mandatory (unless you later allow SUPER_ADMIN cross-tenant creation)
+    // 🔒 Tenant is mandatory
     if (role !== 'SUPER_ADMIN' && !tenantId) {
       throw new ForbiddenException('Tenant context missing');
     }
 
+    // ✅ Generate system code
+    const systemCode = await this.nextTeacherSystemCode(tenantId);
+
     const data: Prisma.TeacherProfileUncheckedCreateInput = {
       tenantId,
+      systemCode,
+
       fullName: dto.fullName,
       initials: dto.initials ?? null,
       nic: dto.nic,
@@ -54,6 +59,7 @@ export class TeachersService {
 
     return this.prisma.client.teacherProfile.create({ data });
   }
+
 
   // =====================================================
   // READ ALL
@@ -146,4 +152,24 @@ export class TeachersService {
       where: { id: existing.id },
     });
   }
+
+  private async nextTeacherSystemCode(tenantId: string) {
+  const tenant = await this.prisma.client.tenant.findUnique({
+    where: { id: tenantId },
+    select: { schoolCode: true },
+  });
+
+  if (!tenant) {
+    throw new Error('Tenant not found');
+  }
+
+  const count = await this.prisma.client.teacherProfile.count({
+    where: { tenantId },
+  });
+
+  const next = count + 1;
+
+  return `EV-${tenant.schoolCode}-TEA-${String(next).padStart(6, '0')}`;
+}
+
 }

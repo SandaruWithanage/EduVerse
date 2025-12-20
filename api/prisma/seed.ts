@@ -145,6 +145,8 @@ console.log("📚 Curriculum Ready");
     },
   });
 
+  console.log("CLASS_ID_10A =", class10A.id); 
+
   console.log("🏫 Classroom 10A Ready");
 
   // ============================================================
@@ -216,16 +218,41 @@ update: {
   for (let i = 0; i < teachersSeed.length; i++) {
     const t = teachersSeed[i];
 
+    // 1️⃣ CREATE USER FOR TEACHER
+const teacherUser = await prisma.user.upsert({
+  where: {
+    tenantId_email: {
+      tenantId: tenant.id,
+      email: `teacher${i + 1}@demo.edu`,
+    },
+  },
+  update: {},
+  create: {
+    tenantId: tenant.id,
+    email: `teacher${i + 1}@demo.edu`,
+    passwordHash: devPassword,
+    role: UserRole.TEACHER,
+    isActive: true,
+  },
+});
+
+// 2️⃣ CREATE TEACHER PROFILE AND LINK USER
     const teacher = await prisma.teacherProfile.upsert({
       where: { nic: `19800${i}000V` },
-      update: {},
+      update: {
+        userId: teacherUser.id,
+      },
       create: {
         tenantId: tenant.id,
+        userId: teacherUser.id, 
+
+        systemCode: `EV-${tenant.schoolCode}-TEA-${String(i + 1).padStart(6, "0")}`,
+
         fullName: t.name,
         initials: getInitials(t.name),
         nic: `19800${i}000V`,
         tin: `TIN-${1000 + i}`,
-        subjectCodes: [t.subject], // Legacy compatibility
+        subjectCodes: [t.subject],
         appointmentType: TeacherAppointmentType.PERMANENT,
         employmentStatus: TeacherEmploymentStatus.ACTIVE,
         serviceStart: new Date(),
@@ -295,6 +322,10 @@ update: {
       update: {},
       create: {
         tenantId: tenant.id,
+
+        // ✅ REQUIRED FOR STEP 6
+        systemCode: `EV-${tenant.schoolCode}-STU-${String(i).padStart(6, "0")}`,
+
         fullName: `Student ${i} Surname`,
         initials: `S.${i}`,
         gender: i % 2 === 0 ? Gender.FEMALE : Gender.MALE,
@@ -307,6 +338,7 @@ update: {
         ethnicity: Ethnicity.SINHALA,
         isActive: true,
       },
+
     });
 
     studentsDB.push(student);
@@ -395,6 +427,7 @@ update: {
             classId: class10A.id,
             academicYearId: academicYear.id,
             date: date,
+            period: 1,
             status: isAbsent(sIndex, day)
               ? AttendanceStatus.ABSENT
               : AttendanceStatus.PRESENT,

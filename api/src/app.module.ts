@@ -20,6 +20,7 @@ import { ClsModule } from 'nestjs-cls'; // <--- Import ClsModule
 import { AllocationsModule } from './allocations/allocations.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EnrollmentModule } from './enrollment/enrollment.module';
+import { AttendanceModule } from './attendance/attendance.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { EnrollmentModule } from './enrollment/enrollment.module';
     AllocationsModule,
     ScheduleModule.forRoot(),
     EnrollmentModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [
