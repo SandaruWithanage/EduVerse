@@ -13,6 +13,36 @@ generator client {
 // -------------------------
 //
 
+// -------------------------
+// TIME & CALENDAR
+// -------------------------
+enum DayOfWeek {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+// -------------------------
+// LEAVE MANAGEMENT
+// -------------------------
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LeaveReason {
+  SICK
+  OFFICIAL
+  PERSONAL
+  OTHER
+}
+
 // School Type (MOE official classification)
 enum SchoolType {
   ONE_AB // "1AB"
@@ -298,6 +328,7 @@ model Classroom {
   studentEnrollments StudentGradeClass[]
   teacherAssignments TeacherGradeClass[]
   attendanceRecords  Attendance[]
+  timetableSlots     TimetableSlot[]
 
   /// Prevents: school → grade 6 → class B repeated twice
   @@unique([tenantId, gradeId, className])
@@ -361,6 +392,8 @@ model TeacherProfile {
   classAssignments  TeacherGradeClass[]
   subjects          TeacherSubject[] // NEW: full relational mapping
   markedAttendances Attendance[] // NEW: attendance they marked
+  timetableSlots    TimetableSlot[]
+  teacherLeaves     TeacherLeave[]
 
   // 🔒 Must be unique per school
   @@unique([tenantId, systemCode])
@@ -403,6 +436,82 @@ model TeacherGradeClass {
   @@index([academicYearId])
 }
 
+model TimetableSlot {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  academicYearId Int
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  dayOfWeek    DayOfWeek
+  periodNumber Int
+
+  startTime String // "07:45"
+  endTime   String // "08:25"
+
+  classId   String
+  classroom Classroom @relation(fields: [classId], references: [id])
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  teacherId String
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [id])
+
+  room String? // optional (gov schools often change rooms)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Prevent contradictions: same class cannot have 2 teachers for same day/period/year
+  @@unique([tenantId, academicYearId, classId, dayOfWeek, periodNumber])
+  @@index([tenantId, academicYearId])
+  @@index([tenantId, teacherId])
+  @@index([tenantId, classId])
+}
+
+model TeacherLeave {
+  id String @id @default(uuid())
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  teacherId String
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [id])
+
+  academicYearId Int?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
+
+  dateFrom DateTime
+  dateTo   DateTime
+
+  reasonCode LeaveReason
+  note       String?
+
+  status LeaveStatus @default(PENDING)
+
+  requestedAt DateTime @default(now())
+
+  approvedByUserId String?
+
+  approvedBy User? @relation("LeaveApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+
+  approvedAt DateTime?
+
+  decisionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, teacherId])
+  @@index([tenantId, status])
+  @@index([tenantId, dateFrom, dateTo])
+}
+
 // -------------------------
 // SUBJECTS & TEACHER SUBJECTS
 // -------------------------
@@ -440,6 +549,7 @@ model Subject {
   /// Relations
   teacherSubjects  TeacherSubject[]
   classAssignments TeacherGradeClass[]
+  timetableSlots   TimetableSlot[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -627,9 +737,10 @@ model User {
   updatedAt DateTime @updatedAt
 
   /// Relations
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
-  inviteTokens  InviteToken[]
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+  inviteTokens   InviteToken[]
+  approvedLeaves TeacherLeave[] @relation("LeaveApprover")
 
   teacherProfile TeacherProfile?
   parentProfile  Parent?
@@ -699,6 +810,8 @@ model Tenant {
   mediums         SchoolMedium[]
   inviteOutbox    InviteOutbox[]
   gateAttendances GateAttendance[]
+  timetableSlots  TimetableSlot[]
+  teacherLeaves   TeacherLeave[]
 
   /// Optional address fields
   addressLine1 String?
@@ -777,6 +890,8 @@ model AcademicYear {
   teacherAssignments TeacherGradeClass[]
   attendanceRecords  Attendance[] // NEW
   gateAttendances    GateAttendance[]
+  timetableSlots     TimetableSlot[]
+  teacherLeaves      TeacherLeave[]
 
   @@unique([label])
   @@index([active])

@@ -21,6 +21,8 @@ import { AllocationsModule } from './allocations/allocations.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EnrollmentModule } from './enrollment/enrollment.module';
 import { AttendanceModule } from './attendance/attendance.module';
+import { TeacherLeavesModule } from './teacher-leaves/teacher-leaves.module';
+import { TimetableModule } from "./timetable/timetable.module";
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { AttendanceModule } from './attendance/attendance.module';
     ScheduleModule.forRoot(),
     EnrollmentModule,
     AttendanceModule,
+    TeacherLeavesModule,
+    TimetableModule,
   ],
   controllers: [AppController],
   providers: [

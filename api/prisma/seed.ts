@@ -145,9 +145,24 @@ console.log("📚 Curriculum Ready");
     },
   });
 
+  const class10B = await prisma.classroom.upsert({
+  where: { tenantId_classCode: { tenantId: tenant.id, classCode: "10B" } },
+  update: {},
+  create: {
+    tenantId: tenant.id,
+    gradeId: grade10.id,
+    className: "B",
+    classCode: "10B",
+    capacity: 45,
+  },
+});
+
+
   console.log("CLASS_ID_10A =", class10A.id); 
+  console.log("CLASS_ID_10B =", class10B.id); 
 
   console.log("🏫 Classroom 10A Ready");
+  console.log("🏫 Classroom 10B Ready");
 
   // ============================================================
   // 5. SUBJECTS (Based on your schema)
@@ -478,6 +493,24 @@ await prisma.user.create({
       role: UserRole.SCHOOL_ADMIN,
     },
   });
+
+  await prisma.user.upsert({
+  where: {
+    tenantId_email: {
+      tenantId: tenant.id,
+      email: "principal@demo.edu",
+    },
+  },
+  update: {},
+  create: {
+    tenantId: tenant.id,
+    email: "principal@demo.edu",
+    passwordHash: devPassword,
+    role: UserRole.PRINCIPAL,
+    isActive: true,
+  },
+});
+
 
   console.log("⭐ Admin Accounts Ready");
   console.log("🚀 Phase 2 Seed Completed Successfully!");
